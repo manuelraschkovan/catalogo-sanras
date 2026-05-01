@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Search, Upload, Package, X, Download, ShoppingCart, Plus, Minus, Trash2, Send, LogOut, Truck, AlertCircle, Users, Settings, FileSpreadsheet } from 'lucide-react';
+import { Search, Upload, Package, X, Download, ShoppingCart, Plus, Minus, Trash2, Send, LogOut, Truck, AlertCircle, Users, Settings, FileSpreadsheet, Check, Pencil, Home } from 'lucide-react';
 
 // Paleta de colores Distribuidora San-Ras SA
 const COLORS = {
@@ -26,22 +26,43 @@ const obtenerUrlImagen = (codigo, nombre) => {
 // Detectar categoría especial según palabras clave en la descripción
 const detectarCategoriaEspecial = (descripcion, marca) => {
   const desc = (descripcion || '').toUpperCase();
+  // El orden importa: las reglas más específicas van primero
   const reglas = [
+    // Snacks (antes de lácteos para que "papas sabor queso" caigan acá)
+    { palabras: ['PAPA SAB', 'PAPITA', 'CHIZ', 'PALITO', 'MANI ', 'SNACK', 'PALITOS SAL', 'TWISTOS', 'PEHUAMAR'], categoria: 'Snacks' },
+    // Dulces
     { palabras: ['AFJ', 'ALFAJOR'], categoria: 'Alfajores' },
-    { palabras: ['CRLS', 'CEREAL'], categoria: 'Cereales' },
     { palabras: ['GLLT', 'GALLET'], categoria: 'Galletitas' },
-    { palabras: ['CHOC', 'CHOCOLATE'], categoria: 'Chocolates' },
-    { palabras: ['CARAM', 'GOMITA', 'GOLOSINA'], categoria: 'Golosinas' },
-    { palabras: ['GASEOSA', 'COCA', 'PEPSI', 'SPRITE', 'FANTA'], categoria: 'Gaseosas' },
-    { palabras: ['AGUA MIN'], categoria: 'Aguas' },
+    { palabras: ['CHOC', 'CHOCOLATE', 'BOMBON'], categoria: 'Chocolates' },
+    { palabras: ['CARAM', 'GOMITA', 'CHUPETIN', 'GOLOSINA', 'CHICLE', 'PASTILLA'], categoria: 'Golosinas' },
+    { palabras: ['CRLS', 'CEREAL', 'BARRITA'], categoria: 'Cereales' },
+    // Bebidas
+    { palabras: ['GASEOSA', 'COCA', 'PEPSI', 'SPRITE', 'FANTA', 'MANAOS', 'SCHWEPPES', '7UP'], categoria: 'Gaseosas' },
+    { palabras: ['AGUA MIN', 'AGUA SAB', 'AGUA SIN'], categoria: 'Aguas' },
+    { palabras: ['JUGO', 'NESTEA', 'TANG', 'CLIGHT'], categoria: 'Jugos' },
     { palabras: ['CERVEZA'], categoria: 'Cervezas' },
     { palabras: ['VINO'], categoria: 'Vinos' },
-    { palabras: ['LECHE', 'YOGUR', 'QUESO', 'MANTECA'], categoria: 'Lácteos' },
+    { palabras: ['FERNET', 'WHISKY', 'WISKY', 'GIN ', 'VODKA', 'APERITIVO', 'GANCIA'], categoria: 'Bebidas Blancas' },
+    // Almacén
     { palabras: ['ACEITE'], categoria: 'Aceites' },
     { palabras: ['ARROZ'], categoria: 'Arroz' },
-    { palabras: ['FIDEO', 'PASTA'], categoria: 'Fideos' },
-    { palabras: ['LIMP', 'DETERG', 'JABON', 'LAVANDINA'], categoria: 'Limpieza' },
-    { palabras: ['PAPEL HIG', 'TOALLA'], categoria: 'Papelería' },
+    { palabras: ['AZUC'], categoria: 'Azúcar' },
+    { palabras: ['YERBA', 'MATE COCID'], categoria: 'Yerba y Mate' },
+    { palabras: ['CAFE', 'CAPUCHIN'], categoria: 'Café' },
+    { palabras: ['HARINA'], categoria: 'Harinas' },
+    { palabras: ['CONSERV', 'ATUN', 'CABALLA', 'SARDINA', 'PURE TOMATE', 'ARVEJA', 'CHOCLO'], categoria: 'Conservas' },
+    { palabras: ['LENTEJA', 'POROTO', 'GARBANZO', 'LEGUMBRE'], categoria: 'Legumbres' },
+    { palabras: ['FIDEO', 'PASTA SEC', 'SPAGHETTI', 'MOSTACHO', 'TALLAR'], categoria: 'Fideos' },
+    { palabras: ['SAL FIN', 'SAL GRUE', 'CONDIMENTO', 'PIMIENTA', 'OREGANO'], categoria: 'Condimentos' },
+    // Lácteos (después de snacks para evitar conflictos con "queso")
+    { palabras: ['LECHE', 'YOGUR', 'MANTECA', 'CREMA DE LECHE', 'DULCE DE LECHE', 'QUESO RALL', 'QUESO UNT', 'QUESO CREM', 'QUESO POR', 'QUESO BARR'], categoria: 'Lácteos' },
+    // Limpieza e higiene
+    { palabras: ['DETERG', 'LAVANDINA', 'JABON EN POLV', 'JABON LIQ', 'SUAVIZ', 'LIMPIA', 'DESINF', 'LUSTRA', 'CERA '], categoria: 'Limpieza' },
+    { palabras: ['SHAMPO', 'SHAMPU', 'JABON DE TOC', 'DESODOR', 'PASTA DENT', 'CEPILLO DE D', 'ENJUAGUE'], categoria: 'Higiene Personal' },
+    { palabras: ['PAPEL HIG', 'TOALLA DE PAP', 'SERVILLET', 'ROLLO COC', 'PAÑUELO'], categoria: 'Papelería' },
+    // Mascotas y bebés
+    { palabras: ['ALIMENTO PERR', 'ALIMENTO GAT', 'CACHORR', 'GATITO'], categoria: 'Mascotas' },
+    { palabras: ['PAÑAL', 'TOALLITA HUM', 'BEBE'], categoria: 'Bebés' },
   ];
   
   for (const regla of reglas) {
@@ -72,10 +93,10 @@ const productosEjemplo = [
 ];
 
 const clientesEjemplo = [
-  { numero: '1001', clave: '1234', nombre: 'Supermercado Lin', lista: 1 },
-  { numero: '2001', clave: '1234', nombre: 'Kiosco El Sol', lista: 2 },
-  { numero: '3001', clave: '1234', nombre: 'Hipermercado Norte', lista: 3 },
-  { numero: '5001', clave: '1234', nombre: 'Juan Pérez (Revendedor)', lista: 5 },
+  { numero: '1001', clave: '1234', nombre: 'Supermercado Lin', lista: 1, ciudad: 'Bahía Blanca' },
+  { numero: '2001', clave: '1234', nombre: 'Kiosco El Sol', lista: 2, ciudad: 'Punta Alta' },
+  { numero: '3001', clave: '1234', nombre: 'Hipermercado Norte', lista: 3, ciudad: 'Médanos' },
+  { numero: '5001', clave: '1234', nombre: 'Juan Pérez (Revendedor)', lista: 5, ciudad: 'Tornquist' },
 ];
 
 const NOMBRES_LISTAS = {
@@ -88,7 +109,138 @@ const NOMBRES_LISTAS = {
 
 const MINIMO_CONSUMIDOR_FINAL = 80000;
 const WHATSAPP_DISTRIBUIDORA = '5492915752165';
+const TELEFONO_DISTRIBUIDORA_VISIBLE = '291 575-2165';
 const ENVIO_WHATSAPP_ACTIVO = false; // Cambiar a true cuando esté listo
+
+// Ciudades habilitadas para envío a domicilio (sin costo)
+const CIUDADES_CON_ENVIO = ['Bahía Blanca', 'Punta Alta', 'Médanos'];
+
+// Determina si un cliente puede elegir entre retirar o envío
+const puedeElegirEntrega = (cliente) => {
+  if (!cliente || cliente.tipo === 'consumidor') return false; // consumidor final siempre retira
+  if (cliente.lista === 5) return false; // lista 5 ya tiene flete descontado
+  return CIUDADES_CON_ENVIO.includes(cliente.ciudad);
+};
+
+// Componente del control de cantidad con flujo: Agregar → Input + Tilde → Lápiz para editar
+function ControlCantidad({ producto, modoActual, cantidadActual, onAgregar, onEstablecerCantidad, onQuitar, claveCar }) {
+  const [estado, setEstado] = useState('inicial'); // 'inicial' | 'editando' | 'confirmado'
+  const [cantidadTemp, setCantidadTemp] = useState('1');
+  const inputRef = useRef(null);
+
+  // Si la cantidad cambia desde fuera (ej: desde el carrito), sincronizar
+  useEffect(() => {
+    if (cantidadActual > 0 && estado === 'inicial') {
+      setEstado('confirmado');
+    }
+    if (cantidadActual === 0 && estado === 'confirmado') {
+      setEstado('inicial');
+    }
+  }, [cantidadActual]);
+
+  const iniciarAgregar = () => {
+    setCantidadTemp('1');
+    setEstado('editando');
+    setTimeout(() => inputRef.current?.focus(), 50);
+    setTimeout(() => inputRef.current?.select(), 80);
+  };
+
+  const confirmar = () => {
+    const cant = parseInt(cantidadTemp) || 0;
+    if (cant <= 0) {
+      setEstado('inicial');
+      onEstablecerCantidad(producto, modoActual, 0);
+      return;
+    }
+    onEstablecerCantidad(producto, modoActual, cant);
+    setEstado('confirmado');
+  };
+
+  const editarDeNuevo = () => {
+    setCantidadTemp(String(cantidadActual));
+    setEstado('editando');
+    setTimeout(() => inputRef.current?.focus(), 50);
+    setTimeout(() => inputRef.current?.select(), 80);
+  };
+
+  const eliminar = () => {
+    onEstablecerCantidad(producto, modoActual, 0);
+    setEstado('inicial');
+  };
+
+  if (estado === 'inicial') {
+    return (
+      <button
+        onClick={iniciarAgregar}
+        className="w-full text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1 transition-colors"
+        style={{ backgroundColor: COLORS.azul }}
+      >
+        <Plus className="w-4 h-4" />Agregar
+      </button>
+    );
+  }
+
+  if (estado === 'editando') {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          ref={inputRef}
+          type="number"
+          min="1"
+          value={cantidadTemp}
+          onChange={(e) => setCantidadTemp(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') confirmar();
+            if (e.key === 'Escape') {
+              if (cantidadActual > 0) setEstado('confirmado');
+              else setEstado('inicial');
+            }
+          }}
+          className="flex-1 min-w-0 font-black text-center border-2 rounded-lg py-1.5 text-sm focus:outline-none"
+          style={{ color: COLORS.azul, borderColor: COLORS.azul }}
+          placeholder="Cant."
+        />
+        <button
+          onClick={confirmar}
+          className="text-white p-1.5 rounded-lg flex items-center justify-center"
+          style={{ backgroundColor: '#16a34a' }}
+          title="Confirmar"
+        >
+          <Check className="w-5 h-5" />
+        </button>
+      </div>
+    );
+  }
+
+  // estado === 'confirmado'
+  return (
+    <div className="flex items-center gap-1">
+      <div
+        className="flex-1 min-w-0 font-black text-center py-1.5 text-sm rounded-lg flex items-center justify-center gap-1"
+        style={{ backgroundColor: COLORS.grisClaro, color: COLORS.azul }}
+      >
+        <Check className="w-4 h-4" style={{ color: '#16a34a' }} />
+        {cantidadActual} {modoActual === 'bulto' ? 'B' : 'U'}
+      </div>
+      <button
+        onClick={editarDeNuevo}
+        className="p-1.5 rounded-lg flex items-center justify-center text-white"
+        style={{ backgroundColor: COLORS.azul }}
+        title="Editar cantidad"
+      >
+        <Pencil className="w-4 h-4" />
+      </button>
+      <button
+        onClick={eliminar}
+        className="p-1.5 rounded-lg flex items-center justify-center text-white"
+        style={{ backgroundColor: '#dc2626' }}
+        title="Quitar del pedido"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
 
 // ============ PANTALLA DE LOGIN ============
 function PantallaLogin({ onLogin, clientes }) {
@@ -137,6 +289,17 @@ function PantallaLogin({ onLogin, clientes }) {
             <p className="text-xs text-center text-gray-500 mt-4">
               Compra mínima consumidor final: ${MINIMO_CONSUMIDOR_FINAL.toLocaleString('es-AR')} · Retiro en distribuidora
             </p>
+
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs text-gray-700 leading-relaxed">
+                <strong style={{ color: COLORS.azul }}>¿Tenés autoservicio, almacén, kiosco o sos revendedor?</strong><br/>
+                Si todavía no tenés número de cliente, comunicate al{' '}
+                <a href={`https://wa.me/${WHATSAPP_DISTRIBUIDORA}`} target="_blank" rel="noopener noreferrer" className="font-bold underline" style={{ color: COLORS.azul }}>
+                  {TELEFONO_DISTRIBUIDORA_VISIBLE}
+                </a>
+                {' '}para habilitarlo.
+              </p>
+            </div>
           </div>
         )}
 
@@ -216,11 +379,14 @@ export default function App() {
   const [modoSeleccion, setModoSeleccion] = useState({});
   const [archivosListas, setArchivosListas] = useState({ listas1a4: null, lista5: null });
   const [procesandoListas, setProcesandoListas] = useState(false);
+  const [modalidadEntrega, setModalidadEntrega] = useState('retiro'); // 'retiro' | 'envio'
   const fileInputRef = useRef(null);
 
   const listaActual = usuario?.lista;
   const esConsumidor = usuario?.tipo === 'consumidor';
-  const tieneDescuento = listaActual === 2;
+  const puedeElegirEnvio = puedeElegirEntrega(usuario);
+  // El descuento del 5% solo aplica a Lista 2 cuando RETIRA en local
+  const tieneDescuento = listaActual === 2 && modalidadEntrega === 'retiro';
 
   const categorias = useMemo(() => {
     return ['Todas', ...new Set(productos.map(p => p.categoria))];
@@ -429,7 +595,8 @@ export default function App() {
       const clave = obj.clave || obj.password || obj.contraseña || '1234';
       const nombre = obj.nombre || obj.razon_social || obj.razón_social || '';
       const lista = parseInt(obj.lista || '4') || 4;
-      if (numero) clientes.push({ numero, clave, nombre, lista });
+      const ciudad = obj.ciudad || obj.localidad || '';
+      if (numero) clientes.push({ numero, clave, nombre, lista, ciudad });
     }
     return clientes;
   };
@@ -453,7 +620,7 @@ export default function App() {
   };
 
   const descargarPlantillaClientes = () => {
-    const plantilla = 'numero,clave,nombre,lista\n1001,1234,Supermercado Lin,1\n2001,1234,Kiosco El Sol,2\n3001,1234,Hipermercado Norte,3\n5001,1234,Juan Pérez,5';
+    const plantilla = 'numero,clave,nombre,lista,ciudad\n1001,1234,Supermercado Lin,1,Bahía Blanca\n2001,1234,Kiosco El Sol,2,Punta Alta\n3001,1234,Hipermercado Norte,3,Médanos\n5001,1234,Juan Pérez,5,Tornquist';
     const blob = new Blob([plantilla], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -520,8 +687,21 @@ export default function App() {
       mensaje += `*Tipo:* Consumidor Final\n*Lista:* 4\n`;
     } else {
       mensaje += `*Cliente:* ${usuario.nombre}\n*N° Cliente:* ${usuario.numero}\n*Lista:* ${listaActual}\n`;
+      if (usuario.ciudad) mensaje += `*Ciudad:* ${usuario.ciudad}\n`;
     }
     mensaje += `*Fecha:* ${new Date().toLocaleDateString('es-AR')}\n`;
+    
+    // Modalidad de entrega
+    if (esConsumidor) {
+      mensaje += `*Entrega:* 📍 Retiro en distribuidora\n`;
+    } else if (puedeElegirEnvio) {
+      mensaje += `*Entrega:* ${modalidadEntrega === 'envio' ? '🚚 Envío a domicilio' : '📍 Retiro en local'}\n`;
+    } else if (listaActual === 5) {
+      mensaje += `*Entrega:* 📍 Retiro en distribuidora (Lista 5)\n`;
+    } else {
+      mensaje += `*Entrega:* 📍 Retiro en distribuidora\n`;
+    }
+    
     mensaje += `━━━━━━━━━━━━━━━━━━━━\n\n*PRODUCTOS:*\n`;
     
     Object.values(carrito).forEach(item => {
@@ -534,10 +714,7 @@ export default function App() {
     
     mensaje += `\n\n━━━━━━━━━━━━━━━━━━━━\n*Subtotal:* ${formatearPrecio(subtotalCarrito)}\n`;
     if (tieneDescuento) mensaje += `*Descuento 5% (retiro):* -${formatearPrecio(descuento)}\n`;
-    mensaje += `*TOTAL:* ${formatearPrecio(totalCarrito)}\n`;
-    
-    if (esConsumidor) mensaje += `\n📍 *Retiro en distribuidora*`;
-    else if (tieneDescuento) mensaje += `\n📍 *Aplica descuento por retiro en distribuidora*`;
+    mensaje += `*TOTAL:* ${formatearPrecio(totalCarrito)}`;
     
     const urlWhatsApp = ENVIO_WHATSAPP_ACTIVO 
       ? `https://wa.me/${WHATSAPP_DISTRIBUIDORA}?text=${encodeURIComponent(mensaje)}`
@@ -620,7 +797,7 @@ export default function App() {
           Compra mínima: <strong>{formatearPrecio(MINIMO_CONSUMIDOR_FINAL)}</strong> · Retiro en distribuidora
         </div>
       )}
-      {tieneDescuento && (
+      {listaActual === 2 && (
         <div className="bg-green-50 border-b border-green-200 px-4 py-2 text-sm text-green-800 text-center">
           ✨ Tenés <strong>5% de descuento</strong> retirando la mercadería en la distribuidora
         </div>
@@ -688,43 +865,12 @@ export default function App() {
                       )}
                     </div>
 
-                    {(() => {
-                      const cantActual = modoActual === 'bulto' ? cantBulto : cantUnidad;
-                      if (cantActual === 0) {
-                        return (
-                          <button
-                            onClick={() => agregarAlCarrito(producto, modoActual)}
-                            className="w-full text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1 transition-colors"
-                            style={{ backgroundColor: COLORS.azul }}
-                          >
-                            <Plus className="w-4 h-4" />Agregar
-                          </button>
-                        );
-                      }
-                      return (
-                        <div className="flex items-center justify-between rounded-lg" style={{ backgroundColor: COLORS.grisClaro }}>
-                          <button
-                            onClick={() => quitarDelCarrito(claveCarrito(producto.id, modoActual))}
-                            className="p-2 rounded-l-lg hover:bg-gray-300"
-                            style={{ color: COLORS.azul }}
-                          ><Minus className="w-4 h-4" /></button>
-                          <input
-                            type="number"
-                            min="0"
-                            value={cantActual}
-                            onChange={(e) => establecerCantidad(producto, modoActual, e.target.value)}
-                            onFocus={(e) => e.target.select()}
-                            className="font-black text-center bg-transparent w-12 focus:outline-none focus:bg-white rounded"
-                            style={{ color: COLORS.azul }}
-                          />
-                          <button
-                            onClick={() => agregarAlCarrito(producto, modoActual)}
-                            className="p-2 rounded-r-lg hover:bg-gray-300"
-                            style={{ color: COLORS.azul }}
-                          ><Plus className="w-4 h-4" /></button>
-                        </div>
-                      );
-                    })()}
+                    <ControlCantidad
+                      producto={producto}
+                      modoActual={modoActual}
+                      cantidadActual={modoActual === 'bulto' ? cantBulto : cantUnidad}
+                      onEstablecerCantidad={establecerCantidad}
+                    />
                   </div>
                 </div>
               );
@@ -793,7 +939,43 @@ export default function App() {
             </div>
 
             {Object.keys(carrito).length > 0 && (
-              <div className="border-t p-4 space-y-2">
+              <div className="border-t p-4 space-y-3">
+                {/* Selector de modalidad de entrega (solo si el cliente puede elegir) */}
+                {puedeElegirEnvio && (
+                  <div>
+                    <p className="text-sm font-bold mb-2" style={{ color: COLORS.azul }}>¿Cómo querés recibirlo?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setModalidadEntrega('retiro')}
+                        className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${modalidadEntrega === 'retiro' ? 'text-white' : 'bg-white'}`}
+                        style={modalidadEntrega === 'retiro' 
+                          ? { backgroundColor: COLORS.azul, borderColor: COLORS.azul }
+                          : { borderColor: COLORS.azul, color: COLORS.azul }}
+                      >
+                        <Home className="w-4 h-4 inline mr-1" />
+                        Retiro en local
+                        {listaActual === 2 && <div className="text-xs font-normal mt-0.5">5% descuento</div>}
+                      </button>
+                      <button
+                        onClick={() => setModalidadEntrega('envio')}
+                        className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${modalidadEntrega === 'envio' ? 'text-white' : 'bg-white'}`}
+                        style={modalidadEntrega === 'envio' 
+                          ? { backgroundColor: COLORS.azul, borderColor: COLORS.azul }
+                          : { borderColor: COLORS.azul, color: COLORS.azul }}
+                      >
+                        <Truck className="w-4 h-4 inline mr-1" />
+                        Envío a domicilio
+                        <div className="text-xs font-normal mt-0.5">Sin costo</div>
+                      </button>
+                    </div>
+                    {listaActual === 2 && modalidadEntrega === 'envio' && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                        ⚠️ El 5% de descuento no aplica con envío a domicilio.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex justify-between text-sm">
                   <span>Subtotal:</span>
                   <span className="font-semibold">{formatearPrecio(subtotalCarrito)}</span>
