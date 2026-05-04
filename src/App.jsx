@@ -16,11 +16,17 @@ const LOGO_URL = 'https://res.cloudinary.com/dijfepcwx/image/upload/f_auto,q_aut
 
 // Configuración de Cloudinary para fotos de productos
 const CLOUDINARY_CLOUD = 'dijfepcwx';
+// Las fotos están organizadas por marca: productos/<MARCA>/<CODIGO>
+// Ej: productos/ALF BARRIGON/BG001
 
-// Genera la URL de la imagen del producto a partir del código
-const obtenerUrlImagen = (codigo, nombre) => {
+// Genera la URL de la imagen del producto a partir del código y la marca
+const obtenerUrlImagen = (codigo, nombre, marca) => {
   if (!codigo) return `https://via.placeholder.com/400/1e2a6e/ffffff?text=${encodeURIComponent((nombre || '').substring(0, 20))}`;
-  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,c_fit,q_auto/${codigo}`;
+  // Si el producto tiene marca, usar la carpeta de la marca; si no, ir directo a productos/
+  const ruta = marca 
+    ? `productos/${encodeURIComponent(marca)}/${codigo}`
+    : `productos/${codigo}`;
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,c_fit,q_auto/${ruta}`;
 };
 
 // Detectar categoría especial según palabras clave en la descripción
@@ -87,9 +93,9 @@ function LogoSanRas({ size = 'normal' }) {
 
 // Productos de ejemplo
 const productosEjemplo = [
-  { id: 1, nombre: 'Aceite Girasol 1.5L', categoria: 'Aceites', codigo: 'ACE001', imagen: obtenerUrlImagen('ACE001', 'Aceite Girasol 1.5L'), porBulto: true, unidadesPorBulto: 12, precios: { 1: 2650, 2: 2780, 3: 2680, 4: 2950, 5: 2580 } },
-  { id: 2, nombre: 'Arroz Largo Fino 1kg', categoria: 'Arroz', codigo: 'ARR001', imagen: obtenerUrlImagen('ARR001', 'Arroz Largo Fino 1kg'), porBulto: true, unidadesPorBulto: 10, precios: { 1: 1280, 2: 1350, 3: 1290, 4: 1480, 5: 1240 } },
-  { id: 3, nombre: 'Fideos Spaghetti 500g', categoria: 'Fideos', codigo: 'FID001', imagen: obtenerUrlImagen('FID001', 'Fideos Spaghetti 500g'), porBulto: false, precios: { 1: 850, 2: 920, 3: 870, 4: 1050, 5: 820 } },
+  { id: 1, nombre: 'Aceite Girasol 1.5L', categoria: 'Aceites', codigo: 'ACE001', marca: '', imagen: obtenerUrlImagen('ACE001', 'Aceite Girasol 1.5L', ''), porBulto: true, unidadesPorBulto: 12, precios: { 1: 2650, 2: 2780, 3: 2680, 4: 2950, 5: 2580 } },
+  { id: 2, nombre: 'Arroz Largo Fino 1kg', categoria: 'Arroz', codigo: 'ARR001', marca: '', imagen: obtenerUrlImagen('ARR001', 'Arroz Largo Fino 1kg', ''), porBulto: true, unidadesPorBulto: 10, precios: { 1: 1280, 2: 1350, 3: 1290, 4: 1480, 5: 1240 } },
+  { id: 3, nombre: 'Fideos Spaghetti 500g', categoria: 'Fideos', codigo: 'FID001', marca: '', imagen: obtenerUrlImagen('FID001', 'Fideos Spaghetti 500g', ''), porBulto: false, precios: { 1: 850, 2: 920, 3: 870, 4: 1050, 5: 820 } },
 ];
 
 const clientesEjemplo = [
@@ -548,7 +554,7 @@ export default function App() {
         productosUnificados.push({
           id: id++,
           codigo, nombre, marca, categoria,
-          imagen: obtenerUrlImagen(codigo, nombre),
+          imagen: obtenerUrlImagen(codigo, nombre, marca),
           porBulto: false,
           unidadesPorBulto: 1,
           precios: {
