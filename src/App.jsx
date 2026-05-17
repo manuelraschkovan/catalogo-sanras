@@ -20,15 +20,23 @@ const CLOUDINARY_CLOUD = 'dijfepcwx';
 // El public_id de cada foto en Cloudinary debe ser el código del producto (ej: BG001, BG002).
 // La carpeta visual donde estén guardadas en Cloudinary no afecta al catálogo.
 
-// Versión de imágenes: subir este número fuerza al navegador a recargar todas las fotos
-// (sirve cuando se borra o reemplaza una foto y el navegador la tiene cacheada)
-const VERSION_IMAGENES = 2;
+// "Sello" de caché basado en el día: cambia automáticamente cada jornada, de modo que
+// si reemplazás o borrás una foto, al día siguiente el navegador la recarga sí o sí.
+// Como es parte de la RUTA (no un ?query), no interfiere con las transformaciones.
+const SELLO_CACHE = (() => {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getDate()).padStart(2, '0')}`;
+})();
 
 // Genera la URL de la imagen del producto a partir del código
 const obtenerUrlImagen = (codigo, nombre) => {
   if (!codigo) return `https://via.placeholder.com/400/1e2a6e/ffffff?text=${encodeURIComponent((nombre || '').substring(0, 20))}`;
-  // c_fill + g_auto: recorta de forma inteligente detectando el producto, llena el cuadro parejo
-  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,h_400,c_fill,g_auto,q_auto/${codigo}?v=${VERSION_IMAGENES}`;
+  // Transformaciones (recorte inteligente que llena el cuadro parejo):
+  //   w_400,h_400  -> cuadrado perfecto
+  //   c_fill,g_auto -> recorta detectando el producto
+  //   q_auto,f_auto -> calidad y formato óptimos
+  // El sello de caché va como una transformación más (no como ?query) para no romper el recorte.
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,h_400,c_fill,g_auto,q_auto,f_auto/v${SELLO_CACHE}/${codigo}`;
 };
 
 // Detectar categoría especial según palabras clave en la descripción
