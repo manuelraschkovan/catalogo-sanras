@@ -20,10 +20,15 @@ const CLOUDINARY_CLOUD = 'dijfepcwx';
 // El public_id de cada foto en Cloudinary debe ser el código del producto (ej: BG001, BG002).
 // La carpeta visual donde estén guardadas en Cloudinary no afecta al catálogo.
 
+// Versión de imágenes: subir este número fuerza al navegador a recargar todas las fotos
+// (sirve cuando se borra o reemplaza una foto y el navegador la tiene cacheada)
+const VERSION_IMAGENES = 2;
+
 // Genera la URL de la imagen del producto a partir del código
 const obtenerUrlImagen = (codigo, nombre) => {
   if (!codigo) return `https://via.placeholder.com/400/1e2a6e/ffffff?text=${encodeURIComponent((nombre || '').substring(0, 20))}`;
-  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,c_fit,q_auto/${codigo}`;
+  // c_fill + g_auto: recorta de forma inteligente detectando el producto, llena el cuadro parejo
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,h_400,c_fill,g_auto,q_auto/${codigo}?v=${VERSION_IMAGENES}`;
 };
 
 // Detectar categoría especial según palabras clave en la descripción
