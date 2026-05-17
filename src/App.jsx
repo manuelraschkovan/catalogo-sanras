@@ -31,12 +31,13 @@ const SELLO_CACHE = (() => {
 // Genera la URL de la imagen del producto a partir del código
 const obtenerUrlImagen = (codigo, nombre) => {
   if (!codigo) return `https://via.placeholder.com/400/1e2a6e/ffffff?text=${encodeURIComponent((nombre || '').substring(0, 20))}`;
-  // Transformaciones (recorte inteligente que llena el cuadro parejo):
-  //   w_400,h_400  -> cuadrado perfecto
-  //   c_fill,g_auto -> recorta detectando el producto
+  // Transformaciones (foto completa sin recortar, centrada en cuadro con fondo blanco):
+  //   w_400,h_400  -> cuadro cuadrado
+  //   c_pad        -> mete la foto ENTERA sin cortar nada
+  //   b_white      -> rellena el espacio sobrante con fondo blanco
   //   q_auto,f_auto -> calidad y formato óptimos
-  // El sello de caché va como una transformación más (no como ?query) para no romper el recorte.
-  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,h_400,c_fill,g_auto,q_auto,f_auto/v${SELLO_CACHE}/${codigo}`;
+  // El sello de caché va como una transformación más (no como ?query) para no romper la transformación.
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,h_400,c_pad,b_white,q_auto,f_auto/v${SELLO_CACHE}/${codigo}`;
 };
 
 // Detectar categoría especial según palabras clave en la descripción
