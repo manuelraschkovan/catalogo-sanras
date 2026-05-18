@@ -524,11 +524,26 @@ export default function App() {
       const codigo = String(fila[idxCodigo] || '').trim();
       const descripcion = String(fila[idxDesc] || '').trim();
       const precioRaw = fila[idxPrecio];
+      const tienePrecio = precioRaw !== '' && precioRaw !== null && precioRaw !== undefined;
+
+      // Detectar fila de MARCA: en este Excel, el nombre de la marca aparece en la
+      // columna del Código, sin descripción y sin precio al lado.
+      // Ej: fila con "ALF BARRIGON" en columna Código, resto vacío.
+      if (codigo && !descripcion && !tienePrecio) {
+        marcaActual = codigo;
+        continue;
+      }
       
-      if (!codigo && descripcion && !precioRaw) {
+      // Fila vacía: ignorar
+      if (!codigo && !descripcion) continue;
+      
+      // Fila sin código pero con descripción (separador alternativo): tomar como marca
+      if (!codigo && descripcion && !tienePrecio) {
         marcaActual = descripcion;
         continue;
       }
+      
+      // Fila de producto normal: necesita código Y descripción
       if (!codigo || !descripcion) continue;
       
       const parsearPrecio = (val) => {
