@@ -447,37 +447,51 @@ export default function App() {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const filas = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     
+    // Buscar la fila de encabezados: tiene "Código", "Descripción" y al menos "Lista 1"
     let filaHeader = -1;
-    for (let i = 0; i < Math.min(filas.length, 20); i++) {
-      const fila = filas[i].map(c => String(c).toLowerCase());
-      if (fila.some(c => c.includes('código') || c.includes('codigo')) && 
-          fila.some(c => c.includes('descrip'))) {
+    for (let i = 0; i < Math.min(filas.length, 25); i++) {
+      const fila = (filas[i] || []).map(c => String(c).toLowerCase().trim());
+      const tieneCodigo = fila.some(c => c === 'código' || c === 'codigo');
+      const tieneDesc = fila.some(c => c.includes('descrip'));
+      const tieneLista = fila.some(c => c.includes('lista 1') || c === 'lista1');
+      if (tieneCodigo && tieneDesc && tieneLista) {
         filaHeader = i;
         break;
       }
     }
+    if (filaHeader === -1) throw new Error('Listas 1-4: no se encontró la fila de encabezados (Código / Descripción / Lista 1...)');
     
-    if (filaHeader === -1) throw new Error('No se encontró la fila de encabezados');
-    
-    const headers = filas[filaHeader].map(h => String(h).toLowerCase().trim());
-    const idxCodigo = headers.findIndex(h => h.includes('código') || h.includes('codigo'));
+    const headers = (filas[filaHeader] || []).map(h => String(h).toLowerCase().trim());
+    const idxCodigo = headers.findIndex(h => h === 'código' || h === 'codigo');
     const idxDesc = headers.findIndex(h => h.includes('descrip'));
     const idxL1 = headers.findIndex(h => h.includes('lista 1') || h === 'lista1');
     const idxL2 = headers.findIndex(h => h.includes('lista 2') || h === 'lista2');
     const idxL3 = headers.findIndex(h => h.includes('lista 3') || h === 'lista3');
     const idxL4 = headers.findIndex(h => h.includes('lista 4') || h === 'lista4');
     
+    // Detectar filas de basura/título/encabezado repetido
+    const esTextoBasura = (txt) => {
+      const t = txt.toLowerCase();
+      return t.includes('distribuidora') || t.includes('consulta de cambios') ||
+             t.includes('filtrado por') || t === 'código' || t === 'codigo' ||
+             t.includes('descrip') || t.includes('artículos cuya') || t.includes('articulos cuya');
+    };
+    
+    const parsearPrecio = (val) => {
+      if (typeof val === 'number') return val;
+      return parseFloat(String(val).replace(/[$\s]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
+    };
+    
     const productos = {};
     for (let i = filaHeader + 1; i < filas.length; i++) {
-      const fila = filas[i];
+      const fila = filas[i] || [];
       const codigo = String(fila[idxCodigo] || '').trim();
       const descripcion = String(fila[idxDesc] || '').trim();
-      if (!codigo || !descripcion) continue;
       
-      const parsearPrecio = (val) => {
-        if (typeof val === 'number') return val;
-        return parseFloat(String(val).replace(/[$\s]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
-      };
+      // Saltar basura y encabezados repetidos
+      if (esTextoBasura(codigo) || esTextoBasura(descripcion)) continue;
+      // Un producto necesita código Y descripción
+      if (!codigo || !descripcion) continue;
       
       productos[codigo] = {
         codigo, nombre: descripcion,
@@ -499,51 +513,62 @@ export default function App() {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const filas = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     
+    // Buscar la fila de encabezados (la que tiene "Código", "Descripción" y "Precio")
     let filaHeader = -1;
-    for (let i = 0; i < Math.min(filas.length, 20); i++) {
-      const fila = filas[i].map(c => String(c).toLowerCase());
-      if (fila.some(c => c.includes('código') || c.includes('codigo')) && 
-          fila.some(c => c.includes('descrip'))) {
+    for (let i = 0; i < Math.min(filas.length, 25); i++) {
+      const fila = (filas[i] || []).map(c => String(c).toLowerCase().trim());
+      const tieneCodigo = fila.some(c => c === 'código' || c === 'codigo');
+      const tieneDesc = fila.some(c => c.includes('descrip'));
+      const tienePrecio = fila.some(c => c === 'precio');
+      if (tieneCodigo && tieneDesc && tienePrecio) {
         filaHeader = i;
         break;
       }
     }
+    if (filaHeader === -1) throw new Error('Lista 5: no se encontró la fila de encabezados (Código / Descripción / Precio)');
     
-    if (filaHeader === -1) throw new Error('No se encontró la fila de encabezados');
-    
-    const headers = filas[filaHeader].map(h => String(h).toLowerCase().trim());
-    const idxCodigo = headers.findIndex(h => h.includes('código') || h.includes('codigo'));
+    const headers = (filas[filaHeader] || []).map(h => String(h).toLowerCase().trim());
+    const idxCodigo = headers.findIndex(h => h === 'código' || h === 'codigo');
     const idxDesc = headers.findIndex(h => h.includes('descrip'));
-    const idxPrecio = headers.findIndex(h => h.includes('precio'));
+    const idxPrecio = headers.findIndex(h => h === 'precio');
+    
+    // Palabras que indican que una fila es basura/título (no es marca ni producto)
+    const esTextoBasura = (txt) => {
+      const t = txt.toLowerCase();
+      return t.includes('distribuidora') || t.includes('lista de precio') || 
+             t.includes('los precios') || t === 'código' || t === 'codigo' ||
+             t.includes('descrip') || t === 'precio';
+    };
     
     const productos = {};
     let marcaActual = '';
     
     for (let i = filaHeader + 1; i < filas.length; i++) {
-      const fila = filas[i];
+      const fila = filas[i] || [];
       const codigo = String(fila[idxCodigo] || '').trim();
       const descripcion = String(fila[idxDesc] || '').trim();
       const precioRaw = fila[idxPrecio];
       const tienePrecio = precioRaw !== '' && precioRaw !== null && precioRaw !== undefined;
 
-      // Detectar fila de MARCA: en este Excel, el nombre de la marca aparece en la
-      // columna del Código, sin descripción y sin precio al lado.
-      // Ej: fila con "ALF BARRIGON" en columna Código, resto vacío.
-      if (codigo && !descripcion && !tienePrecio) {
-        marcaActual = codigo;
-        continue;
-      }
+      // Saltar filas de encabezado repetidas o títulos que reaparecen al scrollear
+      if (esTextoBasura(codigo) || esTextoBasura(descripcion)) continue;
       
       // Fila vacía: ignorar
       if (!codigo && !descripcion) continue;
       
-      // Fila sin código pero con descripción (separador alternativo): tomar como marca
+      // Fila de MARCA: texto en columna Código, sin descripción y sin precio
+      // Ej: "ALF BARRIGON" en columna A, resto vacío
+      if (codigo && !descripcion && !tienePrecio) {
+        marcaActual = codigo;
+        continue;
+      }
+      // Separador alternativo: texto en descripción, sin código ni precio
       if (!codigo && descripcion && !tienePrecio) {
         marcaActual = descripcion;
         continue;
       }
       
-      // Fila de producto normal: necesita código Y descripción
+      // Fila de producto: necesita código Y descripción
       if (!codigo || !descripcion) continue;
       
       const parsearPrecio = (val) => {
