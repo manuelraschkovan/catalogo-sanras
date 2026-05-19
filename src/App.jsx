@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Search, Upload, Package, X, Download, ShoppingCart, Plus, Minus, Trash2, Send, LogOut, Truck, AlertCircle, Users, Settings, FileSpreadsheet, Check, Pencil, Home, ChevronDown } from 'lucide-react';
+import { Search, Upload, Package, X, Download, ShoppingCart, Plus, Minus, Trash2, Send, LogOut, Truck, AlertCircle, Users, Settings, FileSpreadsheet, Check, Pencil, Home, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Paleta de colores Distribuidora San-Ras SA
 const COLORS = {
@@ -387,8 +387,9 @@ export default function App() {
   const [clientes, setClientes] = useState(clientesEjemplo);
   const [busqueda, setBusqueda] = useState('');
   const [categoriaActiva, setCategoriaActiva] = useState('Todas');
-  const [marcaActiva, setMarcaActiva] = useState('Todas');
+  const [marcasSeleccionadas, setMarcasSeleccionadas] = useState([]); // array de marcas elegidas con tilde
   const [mostrarMenuMarcas, setMostrarMenuMarcas] = useState(false);
+  const [busquedaMarca, setBusquedaMarca] = useState('');
   const [mostrarCarga, setMostrarCarga] = useState(false);
   const [mensajeCarga, setMensajeCarga] = useState('');
   const [tipoCargaArchivo, setTipoCargaArchivo] = useState('listas-excel');
@@ -411,11 +412,6 @@ export default function App() {
     return ['Todas', ...new Set(productos.map(p => p.categoria))];
   }, [productos]);
 
-  const marcas = useMemo(() => {
-    const lista = productos.map(p => p.marca).filter(m => m && m.trim() !== '');
-    return ['Todas', ...[...new Set(lista)].sort((a, b) => a.localeCompare(b))];
-  }, [productos]);
-
   const productosFiltrados = useMemo(() => {
     return productos.filter(p => {
       const texto = busqueda.toLowerCase();
@@ -424,10 +420,29 @@ export default function App() {
                                 (p.marca || '').toLowerCase().includes(texto) ||
                                 (p.categoria || '').toLowerCase().includes(texto);
       const coincideCategoria = categoriaActiva === 'Todas' || p.categoria === categoriaActiva;
-      const coincideMarca = marcaActiva === 'Todas' || p.marca === marcaActiva;
+      const coincideMarca = marcasSeleccionadas.length === 0 || marcasSeleccionadas.includes(p.marca);
       return coincideBusqueda && coincideCategoria && coincideMarca;
     });
-  }, [productos, busqueda, categoriaActiva, marcaActiva]);
+  }, [productos, busqueda, categoriaActiva, marcasSeleccionadas]);
+
+  // Marcas agrupadas por letra inicial (para el menú desplegable A-B-C...)
+  const marcasPorLetra = useMemo(() => {
+    const lista = [...new Set(productos.map(p => p.marca).filter(m => m && m.trim() !== ''))];
+    lista.sort((a, b) => a.localeCompare(b));
+    const grupos = {};
+    lista.forEach(marca => {
+      const letra = marca.charAt(0).toUpperCase();
+      if (!grupos[letra]) grupos[letra] = [];
+      grupos[letra].push(marca);
+    });
+    return grupos;
+  }, [productos]);
+
+  const toggleMarca = (marca) => {
+    setMarcasSeleccionadas(prev => 
+      prev.includes(marca) ? prev.filter(m => m !== marca) : [...prev, marca]
+    );
+  };
 
   const formatearPrecio = (precio) => {
     return new Intl.NumberFormat('es-AR', {
@@ -804,8 +819,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="text-white shadow-lg sticky top-0 z-40" style={{ background: `linear-gradient(135deg, ${COLORS.azul} 0%, ${COLORS.azulOscuro} 100%)` }}>
-        <div className="max-w-7xl mx-auto px-4 py-3">
+      <header className="text-white shadow-lg sticky top-0 z-40 relative" style={{ background: `linear-gradient(135deg, ${COLORS.azul} 0%, ${COLORS.azulOscuro} 100%)` }}>
+        <div className="max-w-7xl mx-auto px-4 py-3 relative">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="bg-white rounded-lg p-1.5 flex items-center justify-center">
@@ -847,73 +862,165 @@ export default function App() {
             />
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 items-center">
-            {/* Botón Todas + desplegable de marcas */}
+          {/* Barra de marcas + categorías con flechas de desplazamiento */}
+          <div className="flex items-center gap-1">
+            {/* Botón Todas / Marcas con desplegable */}
             <div className="relative flex-shrink-0">
               <button
-                onClick={() => {
-                  if (categoriaActiva === 'Todas' && marcaActiva === 'Todas') {
-                    setMostrarMenuMarcas(!mostrarMenuMarcas);
-                  } else {
-                    setCategoriaActiva('Todas');
-                    setMarcaActiva('Todas');
-                    setMostrarMenuMarcas(false);
-                  }
-                }}
+                onClick={() => setMostrarMenuMarcas(!mostrarMenuMarcas)}
                 className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors flex items-center gap-1 ${
+                  marcasSeleccionadas.length > 0 ? 'bg-white' : (categoriaActiva === 'Todas' ? 'bg-white' : 'bg-white/20 text-white hover:bg-white/30')
+                }`}
+                style={(marcasSeleccionadas.length > 0 || categoriaActiva === 'Todas') ? { color: COLORS.azul } : {}}
+              >
+                {marcasSeleccionadas.length === 0 
+                  ? 'Marcas' 
+                  : `${marcasSeleccionadas.length} marca${marcasSeleccionadas.length > 1 ? 's' : ''}`}
+                <ChevronDown className={`w-4 h-4 transition-transform ${mostrarMenuMarcas ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+
+            {/* Separador */}
+            <div className="w-px h-6 bg-white/30 flex-shrink-0 mx-1"></div>
+
+            {/* Flecha izquierda */}
+            <button
+              onClick={() => {
+                const cont = document.getElementById('barra-categorias');
+                if (cont) cont.scrollBy({ left: -200, behavior: 'smooth' });
+              }}
+              className="flex-shrink-0 text-white/70 hover:text-white p-1"
+              aria-label="Desplazar a la izquierda"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            {/* Categorías (scroll sin barra visible) */}
+            <div
+              id="barra-categorias"
+              className="flex gap-2 overflow-x-auto flex-1"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              <style>{`#barra-categorias::-webkit-scrollbar { display: none; }`}</style>
+              <button
+                onClick={() => { setCategoriaActiva('Todas'); setMostrarMenuMarcas(false); }}
+                className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
                   categoriaActiva === 'Todas' ? 'bg-white' : 'bg-white/20 text-white hover:bg-white/30'
                 }`}
                 style={categoriaActiva === 'Todas' ? { color: COLORS.azul } : {}}
               >
-                {marcaActiva === 'Todas' ? 'Todas' : marcaActiva}
-                <ChevronDown className={`w-4 h-4 transition-transform ${mostrarMenuMarcas ? 'rotate-180' : ''}`} />
+                Todas
               </button>
-
-              {/* Menú desplegable de marcas */}
-              {mostrarMenuMarcas && (
-                <div className="absolute top-full left-0 mt-2 bg-white rounded-xl shadow-2xl z-50 w-64 max-h-80 overflow-y-auto py-2">
-                  <div className="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase">Filtrar por marca</div>
-                  {marcas.map(m => (
-                    <button
-                      key={m}
-                      onClick={() => {
-                        setMarcaActiva(m);
-                        setCategoriaActiva('Todas');
-                        setMostrarMenuMarcas(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
-                        marcaActiva === m ? 'font-bold' : 'text-gray-700'
-                      }`}
-                      style={marcaActiva === m ? { color: COLORS.azul, backgroundColor: '#eff6ff' } : {}}
-                    >
-                      {m === 'Todas' ? '🏷️ Todas las marcas' : m}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {categorias.filter(c => c !== 'Todas').map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => { setCategoriaActiva(cat); setMostrarMenuMarcas(false); }}
+                  className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
+                    categoriaActiva === cat ? 'bg-white' : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
+                  style={categoriaActiva === cat ? { color: COLORS.azul } : {}}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
 
-            {/* Separador visual */}
-            <div className="w-px h-6 bg-white/30 flex-shrink-0"></div>
-
-            {/* Categorías */}
-            {categorias.filter(c => c !== 'Todas').map(cat => (
-              <button
-                key={cat}
-                onClick={() => {
-                  setCategoriaActiva(cat);
-                  setMarcaActiva('Todas');
-                  setMostrarMenuMarcas(false);
-                }}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
-                  categoriaActiva === cat ? 'bg-white' : 'bg-white/20 text-white hover:bg-white/30'
-                }`}
-                style={categoriaActiva === cat ? { color: COLORS.azul } : {}}
-              >
-                {cat}
-              </button>
-            ))}
+            {/* Flecha derecha */}
+            <button
+              onClick={() => {
+                const cont = document.getElementById('barra-categorias');
+                if (cont) cont.scrollBy({ left: 200, behavior: 'smooth' });
+              }}
+              className="flex-shrink-0 text-white/70 hover:text-white p-1"
+              aria-label="Desplazar a la derecha"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
           </div>
+
+          {/* Menú desplegable de marcas (tapa parte del catálogo) */}
+          {mostrarMenuMarcas && (
+            <>
+              {/* Fondo para cerrar al tocar afuera */}
+              <div className="fixed inset-0 z-30" onClick={() => setMostrarMenuMarcas(false)}></div>
+              <div className="absolute left-0 right-0 mt-2 bg-white rounded-b-xl shadow-2xl z-40 max-h-[70vh] flex flex-col mx-4">
+                {/* Buscador de marcas */}
+                <div className="p-3 border-b">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar marca..."
+                      value={busquedaMarca}
+                      onChange={(e) => setBusquedaMarca(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  {marcasSeleccionadas.length > 0 && (
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs text-gray-500">{marcasSeleccionadas.length} marca(s) seleccionada(s)</span>
+                      <button
+                        onClick={() => setMarcasSeleccionadas([])}
+                        className="text-xs font-bold hover:underline"
+                        style={{ color: COLORS.azul }}
+                      >
+                        Limpiar selección
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Lista de marcas agrupadas por letra */}
+                <div className="overflow-y-auto flex-1 p-2">
+                  {Object.keys(marcasPorLetra).length === 0 ? (
+                    <div className="text-center text-gray-400 text-sm py-8">
+                      No hay marcas cargadas todavía
+                    </div>
+                  ) : (
+                    Object.keys(marcasPorLetra).sort().map(letra => {
+                      const marcasDeLetra = marcasPorLetra[letra].filter(m => 
+                        m.toLowerCase().includes(busquedaMarca.toLowerCase())
+                      );
+                      if (marcasDeLetra.length === 0) return null;
+                      return (
+                        <div key={letra} className="mb-2">
+                          <div className="px-2 py-1 text-xs font-black text-white rounded sticky top-0" style={{ backgroundColor: COLORS.azul }}>
+                            {letra}
+                          </div>
+                          {marcasDeLetra.map(marca => (
+                            <label
+                              key={marca}
+                              className="flex items-center gap-2 px-2 py-2 hover:bg-gray-50 rounded cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={marcasSeleccionadas.includes(marca)}
+                                onChange={() => toggleMarca(marca)}
+                                className="w-4 h-4 rounded"
+                                style={{ accentColor: COLORS.azul }}
+                              />
+                              <span className="text-sm text-gray-700">{marca}</span>
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Botón aplicar/cerrar */}
+                <div className="p-3 border-t">
+                  <button
+                    onClick={() => setMostrarMenuMarcas(false)}
+                    className="w-full py-2 rounded-lg font-bold text-white text-sm"
+                    style={{ backgroundColor: COLORS.azul }}
+                  >
+                    Ver {productosFiltrados.length} producto{productosFiltrados.length !== 1 ? 's' : ''}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </header>
 
@@ -932,14 +1039,14 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 py-6">
         <div className="mb-4 text-sm text-gray-600 flex items-center gap-2 flex-wrap">
           <span>{productosFiltrados.length} {productosFiltrados.length === 1 ? 'producto' : 'productos'}</span>
-          {marcaActiva !== 'Todas' && (
-            <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-bold">
-              {marcaActiva}
-              <button onClick={() => setMarcaActiva('Todas')} className="hover:text-blue-600">
+          {marcasSeleccionadas.map(m => (
+            <span key={m} className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-bold">
+              {m}
+              <button onClick={() => toggleMarca(m)} className="hover:text-blue-600">
                 <X className="w-3 h-3" />
               </button>
             </span>
-          )}
+          ))}
           {categoriaActiva !== 'Todas' && (
             <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-bold">
               {categoriaActiva}
