@@ -609,7 +609,9 @@ export default function App() {
       todosLosCodigos.forEach(codigo => {
         const p1 = prods1a4[codigo];
         const p5 = prods5[codigo];
-        const nombre = p1?.nombre || p5?.nombre || '';
+        // La Lista 5 manda para nombre y marca (es la que tiene los productos organizados por marca).
+        // Si por algún motivo un código solo está en Listas 1-4, se usa ese nombre como respaldo.
+        const nombre = p5?.nombre || p1?.nombre || '';
         const marca = p5?.marca || '';
         const categoria = detectarCategoriaEspecial(nombre, marca);
         
