@@ -412,10 +412,70 @@ function PantallaLogin({ onLogin, clientes }) {
   );
 }
 
+// ============ PANTALLA DE CARGA (camioncito) ============
+function PantallaCarga({ progreso, logoUrl }) {
+  const pct = Math.min(Math.max(progreso, 0), 100);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      background: 'linear-gradient(135deg, #0a2a5e 0%, #1e4a8c 100%)',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', padding: '24px'
+    }}>
+      {/* Logo de la distribuidora */}
+      <img
+        src={logoUrl}
+        alt="Distribuidora San-Ras"
+        style={{ width: 160, maxWidth: '60%', borderRadius: 16, marginBottom: 40, boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}
+      />
+
+      <div style={{ color: 'white', fontSize: 18, fontWeight: 700, marginBottom: 24, textAlign: 'center' }}>
+        Sincronizando catálogo...
+      </div>
+
+      {/* Ruta con el camioncito que avanza */}
+      <div style={{ width: 'min(420px, 85vw)', position: 'relative', marginBottom: 12 }}>
+        {/* Camioncito */}
+        <div style={{
+          position: 'absolute',
+          left: `calc(${pct}% - 20px)`,
+          top: -34,
+          transition: 'left 0.3s ease-out',
+          fontSize: 34, lineHeight: 1
+        }}>
+          🚚
+        </div>
+        {/* Barra de la ruta */}
+        <div style={{
+          height: 8, borderRadius: 8, background: 'rgba(255,255,255,0.2)',
+          overflow: 'hidden', position: 'relative'
+        }}>
+          <div style={{
+            height: '100%', width: `${pct}%`,
+            background: 'linear-gradient(90deg, #ffd54f, #ffb300)',
+            borderRadius: 8, transition: 'width 0.3s ease-out'
+          }} />
+        </div>
+        {/* Líneas de la ruta (decorativo) */}
+        <div style={{
+          position: 'absolute', top: 3, left: 0, right: 0, height: 2,
+          backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.5) 0 10px, transparent 10px 20px)'
+        }} />
+      </div>
+
+      <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 600 }}>
+        {Math.round(pct)}%
+      </div>
+    </div>
+  );
+}
+
 // ============ APP PRINCIPAL ============
 export default function App() {
   const [usuario, setUsuario] = useState(null);
-  const [productos, setProductos] = useState(productosEjemplo);
+  const [productos, setProductos] = useState([]);
+  const [yaSincronizo, setYaSincronizo] = useState(false);
+  const [progresoCarga, setProgresoCarga] = useState(0);
   const [clientes, setClientes] = useState(clientesEjemplo);
   const [busqueda, setBusqueda] = useState('');
   const [categoriaActiva, setCategoriaActiva] = useState('Todas');
@@ -446,6 +506,13 @@ export default function App() {
     let cancelado = false;
     setCargandoBackend(true);
     setErrorBackend('');
+    setProgresoCarga(10);
+
+    // Anima la barra de progreso mientras se espera al backend.
+    // Sube hasta 90% de a poco; el 100% lo da la llegada de los datos.
+    const intervalo = setInterval(() => {
+      setProgresoCarga(p => (p < 90 ? p + Math.random() * 8 : p));
+    }, 200);
 
     fetch(`${BACKEND_URL}/api/catalogo?lista=${lista}`)
       .then(r => {
@@ -457,20 +524,25 @@ export default function App() {
         if (data && data.ok && Array.isArray(data.productos)) {
           const convertidos = data.productos.map(convertirProductoBackend);
           setProductos(convertidos);
+          setProgresoCarga(100);
         } else {
           throw new Error('Respuesta inválida del servidor');
         }
       })
       .catch(err => {
         if (cancelado) return;
-        // Si falla, dejamos los productos de ejemplo y avisamos discretamente
         setErrorBackend('No se pudieron cargar los productos actualizados. ' + err.message);
+        setProgresoCarga(100);
       })
       .finally(() => {
-        if (!cancelado) setCargandoBackend(false);
+        clearInterval(intervalo);
+        if (!cancelado) {
+          setCargandoBackend(false);
+          setYaSincronizo(true);
+        }
       });
 
-    return () => { cancelado = true; };
+    return () => { cancelado = true; clearInterval(intervalo); };
   }, [usuario]);
 
   const listaActual = usuario?.lista;
@@ -835,6 +907,10 @@ export default function App() {
   const cumpleMinimo = !esConsumidor || subtotalCarrito >= MINIMO_CONSUMIDOR_FINAL;
 
   if (!usuario) return <PantallaLogin onLogin={setUsuario} clientes={clientes} />;
+
+  // Después del login: pantalla de carga con el camioncito hasta que
+  // los productos lleguen del backend (primera sincronización).
+  if (!yaSincronizo) return <PantallaCarga progreso={progresoCarga} logoUrl={LOGO_URL} />;
 
   const enviarPedidoWhatsApp = () => {
     if (Object.keys(carrito).length === 0 || !cumpleMinimo) return;
