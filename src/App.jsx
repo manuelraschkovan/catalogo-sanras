@@ -1086,7 +1086,10 @@ export default function App() {
                     className="w-full py-2 rounded-lg font-bold text-white text-sm"
                     style={{ backgroundColor: COLORS.azul }}
                   >
-                    Ver {productosFiltrados.length} producto{productosFiltrados.length !== 1 ? 's' : ''}
+                    {(() => {
+                      const totalMarcas = Object.values(marcasPorLetra).reduce((s, arr) => s + arr.length, 0);
+                      return `Ver ${totalMarcas} marca${totalMarcas !== 1 ? 's' : ''}`;
+                    })()}
                   </button>
                 </div>
               </div>
