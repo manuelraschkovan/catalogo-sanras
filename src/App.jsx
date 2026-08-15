@@ -411,73 +411,112 @@ function PantallaCarga({ progreso, logoUrl }) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 100,
-      background: 'linear-gradient(180deg, #7ec8f0 0%, #b3e0f7 55%, #d4eefb 100%)',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', padding: '24px',
-      overflow: 'hidden'
+      position: 'fixed', inset: 0, zIndex: 100, overflow: 'hidden',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      background: 'linear-gradient(180deg, #8fd3f4 0%, #b8e4f7 45%, #dff2fb 100%)'
     }}>
-      {/* Logo de la distribuidora arriba */}
-      <img
-        src={logoUrl}
-        alt="Distribuidora San-Ras"
-        style={{ width: 150, maxWidth: '55%', borderRadius: 16, marginBottom: 24, boxShadow: '0 8px 30px rgba(0,0,0,0.2)' }}
-      />
+      {/* keyframes de la animación */}
+      <style>{`
+        @keyframes sr-bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
+        @keyframes sr-cloud { 0% { transform: translateX(0) } 100% { transform: translateX(40px) } }
+        @keyframes sr-dash { to { background-position: -68px 0 } }
+        @keyframes sr-fade { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+      `}</style>
 
-      <div style={{ color: '#0a2a5e', fontSize: 18, fontWeight: 800, marginBottom: 28, textAlign: 'center' }}>
-        Preparando tu pedido...
+      {/* Sol */}
+      <div style={{
+        position: 'absolute', top: '8%', right: '14%', width: 70, height: 70, borderRadius: '50%',
+        background: 'radial-gradient(circle, #fff3b0 0%, #ffe066 60%, rgba(255,224,102,0) 72%)'
+      }} />
+      {/* Nubes suaves */}
+      <div style={{ position: 'absolute', top: '14%', left: '12%', animation: 'sr-cloud 9s ease-in-out infinite alternate' }}>
+        <Nube />
+      </div>
+      <div style={{ position: 'absolute', top: '24%', left: '62%', transform: 'scale(0.7)', opacity: 0.85, animation: 'sr-cloud 11s ease-in-out infinite alternate' }}>
+        <Nube />
       </div>
 
-      {/* Escena: galpón --- calle con camión --- comercio */}
-      <div style={{ width: 'min(520px, 92vw)', position: 'relative', height: 150 }}>
+      {/* Tarjeta central con la escena */}
+      <div style={{ animation: 'sr-fade 0.5s ease-out', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+        {/* Logo */}
+        <img src={logoUrl} alt="Distribuidora San-Ras"
+          style={{ width: 138, maxWidth: '48%', borderRadius: 18, marginBottom: 18, boxShadow: '0 10px 34px rgba(10,42,94,0.22)' }} />
 
-        {/* Galpón (origen, izquierda) */}
-        <img src={IMG_GALPON} alt="galpón"
-          style={{ position: 'absolute', left: 0, bottom: 34, width: 92, height: 'auto', zIndex: 2 }} />
+        <div style={{ color: '#0a2a5e', fontSize: 19, fontWeight: 800, letterSpacing: 0.2, marginBottom: 30 }}>
+          Preparando tu pedido…
+        </div>
 
-        {/* Comercio (destino, derecha) */}
-        <img src={IMG_COMERCIO} alt="comercio"
-          style={{ position: 'absolute', right: 0, bottom: 34, width: 92, height: 'auto', zIndex: 2 }} />
+        {/* Escena */}
+        <div style={{ width: 'min(560px, 94vw)', position: 'relative', height: 168 }}>
 
-        {/* La calle */}
-        <div style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, height: 34,
-          background: '#3a3f47', borderRadius: 4
-        }}>
-          {/* Línea discontinua central de la calle */}
+          {/* Pasto/suelo detrás de la calle */}
           <div style={{
-            position: 'absolute', top: '50%', left: 8, right: 8, height: 3,
-            transform: 'translateY(-50%)',
-            backgroundImage: 'repeating-linear-gradient(90deg, #ffd54f 0 18px, transparent 18px 34px)'
+            position: 'absolute', left: 0, right: 0, bottom: 0, height: 96,
+            background: 'linear-gradient(180deg, #cdeeb0 0%, #a9df86 100%)', borderRadius: 12
           }} />
-        </div>
 
-        {/* Camioncito que avanza por la calle.
-            Va del 8% al 84% del ancho para salir del galpón y llegar al comercio. */}
-        <img src={IMG_CAMION} alt="camión"
-          style={{
-            position: 'absolute',
-            left: `calc(${8 + (pct * 0.76)}% - 28px)`,
-            bottom: 24,
-            width: 64, height: 'auto', zIndex: 3,
-            transition: 'left 0.3s ease-out',
-            filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.3))'
-          }} />
-      </div>
+          {/* Galpón (origen) — apoyado sobre el pasto */}
+          <img src={IMG_GALPON} alt="galpón"
+            style={{ position: 'absolute', left: '1%', bottom: 58, width: 118, height: 'auto', zIndex: 3,
+                     filter: 'drop-shadow(0 6px 6px rgba(0,0,0,0.18))' }} />
 
-      {/* Barra de progreso fina + porcentaje */}
-      <div style={{ width: 'min(520px, 92vw)', marginTop: 26 }}>
-        <div style={{ height: 6, borderRadius: 6, background: 'rgba(10,42,94,0.15)', overflow: 'hidden' }}>
+          {/* Comercio (destino) */}
+          <img src={IMG_COMERCIO} alt="comercio"
+            style={{ position: 'absolute', right: '1%', bottom: 58, width: 118, height: 'auto', zIndex: 3,
+                     filter: 'drop-shadow(0 6px 6px rgba(0,0,0,0.18))' }} />
+
+          {/* La calle */}
           <div style={{
-            height: '100%', width: `${pct}%`,
-            background: 'linear-gradient(90deg, #1e4a8c, #0a2a5e)',
-            borderRadius: 6, transition: 'width 0.3s ease-out'
-          }} />
+            position: 'absolute', left: 0, right: 0, bottom: 0, height: 52,
+            background: 'linear-gradient(180deg, #4a4f57 0%, #33373e 100%)',
+            borderTop: '3px solid #2a2d33', borderRadius: '4px 4px 10px 10px', zIndex: 2,
+            boxShadow: 'inset 0 6px 12px rgba(0,0,0,0.25)'
+          }}>
+            {/* Línea discontinua animada */}
+            <div style={{
+              position: 'absolute', top: '50%', left: 0, right: 0, height: 4, transform: 'translateY(-50%)',
+              backgroundImage: 'repeating-linear-gradient(90deg, #ffd54f 0 26px, transparent 26px 42px)',
+              backgroundSize: '68px 4px', animation: 'sr-dash 0.7s linear infinite'
+            }} />
+          </div>
+
+          {/* Camión sobre la calle (con leve rebote). Va del 6% al 78%. */}
+          <div style={{
+            position: 'absolute', bottom: 30, left: `calc(${6 + pct * 0.72}% - 34px)`, zIndex: 4,
+            transition: 'left 0.35s cubic-bezier(.25,.8,.5,1)'
+          }}>
+            <img src={IMG_CAMION} alt="camión"
+              style={{ width: 76, height: 'auto', display: 'block',
+                       animation: 'sr-bob 0.6s ease-in-out infinite',
+                       filter: 'drop-shadow(0 4px 5px rgba(0,0,0,0.3))' }} />
+          </div>
         </div>
-        <div style={{ textAlign: 'center', color: '#0a2a5e', fontSize: 14, fontWeight: 700, marginTop: 8 }}>
-          {Math.round(pct)}%
+
+        {/* Barra de progreso */}
+        <div style={{ width: 'min(560px, 94vw)', marginTop: 30 }}>
+          <div style={{ height: 8, borderRadius: 8, background: 'rgba(10,42,94,0.14)', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${pct}%`, borderRadius: 8,
+              background: 'linear-gradient(90deg, #2f6fd0, #0a2a5e)',
+              transition: 'width 0.35s ease-out'
+            }} />
+          </div>
+          <div style={{ textAlign: 'center', color: '#0a2a5e', fontSize: 14, fontWeight: 800, marginTop: 10 }}>
+            {Math.round(pct)}%
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Nubecita decorativa
+function Nube() {
+  return (
+    <div style={{ position: 'relative', width: 70, height: 26 }}>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, width: 70, height: 18, background: '#fff', borderRadius: 20, opacity: 0.9 }} />
+      <div style={{ position: 'absolute', bottom: 8, left: 14, width: 26, height: 26, background: '#fff', borderRadius: '50%', opacity: 0.9 }} />
+      <div style={{ position: 'absolute', bottom: 6, left: 34, width: 22, height: 22, background: '#fff', borderRadius: '50%', opacity: 0.9 }} />
     </div>
   );
 }
