@@ -405,9 +405,9 @@ function PantallaLogin({ onLogin, clientes }) {
 function PantallaCarga({ progreso, logoUrl }) {
   const pct = Math.min(Math.max(progreso, 0), 100);
 
-  const IMG_GALPON   = 'https://res.cloudinary.com/dijfepcwx/image/upload/v1786811789/Galpon_animado_distribuidora.png';
-  const IMG_COMERCIO = 'https://res.cloudinary.com/dijfepcwx/image/upload/v1786811792/Comercio_animado.png';
-  const IMG_CAMION   = 'https://res.cloudinary.com/dijfepcwx/image/upload/v1786811040/Logo_camioneta.png';
+  const IMG_GALPON   = 'https://res.cloudinary.com/dijfepcwx/image/upload/e_background_removal/v1786811789/Galpon_animado_distribuidora.png';
+  const IMG_COMERCIO = 'https://res.cloudinary.com/dijfepcwx/image/upload/e_background_removal/v1786811792/Comercio_animado.png';
+  const IMG_CAMION   = 'https://res.cloudinary.com/dijfepcwx/image/upload/v1786823128/Logo_camioneta_no_fon_dp.png';
 
   return (
     <div style={{
@@ -486,9 +486,9 @@ function PantallaCarga({ progreso, logoUrl }) {
             transition: 'left 0.35s cubic-bezier(.25,.8,.5,1)'
           }}>
             <img src={IMG_CAMION} alt="camión"
-              style={{ width: 76, height: 'auto', display: 'block',
+              style={{ width: 88, height: 'auto', display: 'block',
                        animation: 'sr-bob 0.6s ease-in-out infinite',
-                       filter: 'drop-shadow(0 4px 5px rgba(0,0,0,0.3))' }} />
+                       filter: 'drop-shadow(1.5px 0 0 #fff) drop-shadow(-1.5px 0 0 #fff) drop-shadow(0 1.5px 0 #fff) drop-shadow(0 -1.5px 0 #fff) drop-shadow(0 5px 5px rgba(0,0,0,0.3))' }} />
           </div>
         </div>
 
