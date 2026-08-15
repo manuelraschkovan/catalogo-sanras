@@ -14,6 +14,38 @@ const COLORS = {
 // URL del logo desde Cloudinary
 const LOGO_URL = 'https://res.cloudinary.com/dijfepcwx/image/upload/f_auto,q_auto/LOGO_DISTRIBUIDORA_i3ljp2.jpg';
 
+// ============================================================
+//  BACKEND SAN-RAS (conexión con Flexxus)
+// ============================================================
+//  Esta es la dirección del backend que lee los productos y precios
+//  desde Flexxus. Cuando cambie el túnel, actualizá SOLO esta línea.
+//  (La de trycloudflare es temporal; con el dominio fijo se cambia acá.)
+const BACKEND_URL = 'https://backend.distribuidorasanras.com';
+
+// Convierte un producto que viene del backend al formato que usa el catálogo.
+// El backend manda: { codigo, descripcion, marca, precio, stock, sinStock, porBulto }
+// Ojo: el backend ya manda SOLO el precio de la lista del cliente (más seguro),
+// así que lo guardamos en las 5 posiciones para no romper el resto del código.
+const convertirProductoBackend = (p, indice) => {
+  const precio = Number(p.precio) || 0;
+  return {
+    id: indice + 1,
+    nombre: p.descripcion || '',
+    categoria: detectarCategoriaEspecial(p.descripcion, p.marca) || 'Otros',
+    codigo: p.codigo || '',
+    marca: p.marca || '',
+    imagen: obtenerUrlImagen(p.codigo, p.descripcion),
+    porBulto: !!p.soloBulto,       // con BLT = solo bulto cerrado
+    unidadesPorBulto: 1,           // el precio de Flexxus ya es el de venta
+    stock: Number(p.stock) || 0,
+    sinStock: !!p.sinStock,
+    soloBulto: !!p.soloBulto,
+    empaque: p.empaque || null,    // desglose calculado por el backend
+    // Mismo precio en las 5 posiciones: el backend ya filtró por la lista del cliente
+    precios: { 1: precio, 2: precio, 3: precio, 4: precio, 5: precio },
+  };
+};
+
 // Configuración de Cloudinary para fotos de productos
 const CLOUDINARY_CLOUD = 'dijfepcwx';
 // Las fotos se buscan por código directamente.
@@ -400,7 +432,46 @@ export default function App() {
   const [archivosListas, setArchivosListas] = useState({ listas1a4: null, lista5: null });
   const [procesandoListas, setProcesandoListas] = useState(false);
   const [modalidadEntrega, setModalidadEntrega] = useState('retiro'); // 'retiro' | 'envio'
+  const [cargandoBackend, setCargandoBackend] = useState(false);
+  const [errorBackend, setErrorBackend] = useState('');
   const fileInputRef = useRef(null);
+
+  // Cuando el usuario entra, traemos los productos del backend (Flexxus)
+  // con el precio de SU lista. Si el backend no responde, quedan los de ejemplo.
+  useEffect(() => {
+    if (!usuario) return;
+    const lista = usuario.lista;
+    if (!lista) return;
+
+    let cancelado = false;
+    setCargandoBackend(true);
+    setErrorBackend('');
+
+    fetch(`${BACKEND_URL}/api/catalogo?lista=${lista}`)
+      .then(r => {
+        if (!r.ok) throw new Error('El servidor respondió ' + r.status);
+        return r.json();
+      })
+      .then(data => {
+        if (cancelado) return;
+        if (data && data.ok && Array.isArray(data.productos)) {
+          const convertidos = data.productos.map(convertirProductoBackend);
+          setProductos(convertidos);
+        } else {
+          throw new Error('Respuesta inválida del servidor');
+        }
+      })
+      .catch(err => {
+        if (cancelado) return;
+        // Si falla, dejamos los productos de ejemplo y avisamos discretamente
+        setErrorBackend('No se pudieron cargar los productos actualizados. ' + err.message);
+      })
+      .finally(() => {
+        if (!cancelado) setCargandoBackend(false);
+      });
+
+    return () => { cancelado = true; };
+  }, [usuario]);
 
   const listaActual = usuario?.lista;
   const esConsumidor = usuario?.tipo === 'consumidor';
@@ -1024,6 +1095,18 @@ export default function App() {
         </div>
       </header>
 
+      {cargandoBackend && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 text-sm text-blue-800 text-center">
+          Actualizando productos y precios...
+        </div>
+      )}
+      {errorBackend && (
+        <div className="bg-orange-50 border-b border-orange-200 px-4 py-2 text-sm text-orange-800 text-center">
+          <AlertCircle className="w-4 h-4 inline mr-1" />
+          {errorBackend}
+        </div>
+      )}
+
       {esConsumidor && (
         <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-sm text-yellow-800 text-center">
           <AlertCircle className="w-4 h-4 inline mr-1" />
@@ -1090,34 +1173,49 @@ export default function App() {
                     <h3 className="font-semibold text-gray-800 mt-1 mb-1 line-clamp-2 text-sm flex-1">{producto.nombre}</h3>
                     <div className="text-xs text-gray-400 mb-2">Cód: {producto.codigo}</div>
 
-                    {tieneBulto && (
-                      <div className="flex gap-1 mb-2 bg-gray-100 rounded-lg p-0.5">
-                        <button
-                          onClick={() => setModoSeleccion({...modoSeleccion, [producto.id]: 'unidad'})}
-                          className={`flex-1 text-xs py-1 rounded ${modoActual === 'unidad' ? 'bg-white shadow-sm font-bold' : 'text-gray-500'}`}
-                          style={modoActual === 'unidad' ? { color: COLORS.azul } : {}}
-                        >Unidad</button>
-                        <button
-                          onClick={() => setModoSeleccion({...modoSeleccion, [producto.id]: 'bulto'})}
-                          className={`flex-1 text-xs py-1 rounded ${modoActual === 'bulto' ? 'bg-white shadow-sm font-bold' : 'text-gray-500'}`}
-                          style={modoActual === 'bulto' ? { color: COLORS.azul } : {}}
-                        >Bulto x{producto.unidadesPorBulto}</button>
-                      </div>
+                    {/* Aviso de stock */}
+                    {producto.sinStock && (
+                      <div className="text-xs font-semibold text-red-600 mb-1">Sin stock</div>
                     )}
 
-                    <div className="text-lg font-black mb-2" style={{ color: COLORS.azul }}>
-                      {formatearPrecio(modoActual === 'bulto' ? precioBult : precioUnit)}
-                      {modoActual === 'bulto' && (
-                        <span className="text-xs text-gray-500 font-normal block">
-                          ({formatearPrecio(precioUnit)} c/u)
-                        </span>
+                    {/* Precio principal (el de venta según la lista del cliente) */}
+                    <div className="text-lg font-black mb-1" style={{ color: COLORS.azul }}>
+                      {formatearPrecio(precioUnit)}
+                      {producto.soloBulto && (
+                        <span className="text-xs text-gray-500 font-normal"> / bulto</span>
                       )}
                     </div>
 
+                    {/* Desglose de empaque calculado por el backend */}
+                    {producto.empaque && (
+                      <div className="text-xs mb-2 leading-snug">
+                        {producto.empaque.avisoFaltaDato ? (
+                          <span className="text-orange-600 font-semibold">⚠ Revisar</span>
+                        ) : (
+                          <>
+                            {producto.soloBulto ? (
+                              <>
+                                <div className="font-semibold" style={{ color: COLORS.azul }}>
+                                  {producto.empaque.mensajePrincipal}
+                                </div>
+                                {producto.empaque.mensajeReferencia && (
+                                  <div className="text-gray-500">{producto.empaque.mensajeReferencia}</div>
+                                )}
+                              </>
+                            ) : (
+                              producto.empaque.mensajeReferencia && (
+                                <div className="text-gray-500">{producto.empaque.mensajeReferencia}</div>
+                              )
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     <ControlCantidad
                       producto={producto}
-                      modoActual={modoActual}
-                      cantidadActual={modoActual === 'bulto' ? cantBulto : cantUnidad}
+                      modoActual="unidad"
+                      cantidadActual={cantUnidad}
                       onEstablecerCantidad={establecerCantidad}
                     />
                   </div>
