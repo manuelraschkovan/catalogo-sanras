@@ -75,49 +75,38 @@ const obtenerUrlImagen = (codigo, nombre) => {
 // Detectar categoría especial según palabras clave en la descripción
 const detectarCategoriaEspecial = (descripcion, marca) => {
   const desc = (descripcion || '').toUpperCase();
-  // El orden importa: las reglas más específicas van primero
+
+  // Categorías por PREFIJO en la descripción (los pone Manuel en Flexxus).
+  // El orden importa: la primera que coincida gana.
+  // Se busca el código como palabra separada (con límites), para evitar
+  // que un código matchee dentro de otra palabra.
   const reglas = [
-    // Snacks (antes de lácteos para que "papas sabor queso" caigan acá)
-    { palabras: ['PAPA SAB', 'PAPITA', 'CHIZ', 'PALITO', 'MANI ', 'SNACK', 'PALITOS SAL', 'TWISTOS', 'PEHUAMAR'], categoria: 'Snacks' },
-    // Dulces
-    { palabras: ['AFJ', 'ALFAJOR'], categoria: 'Alfajores' },
-    { palabras: ['GLLT', 'GALLET'], categoria: 'Galletitas' },
-    { palabras: ['CHOC', 'CHOCOLATE', 'BOMBON'], categoria: 'Chocolates' },
-    { palabras: ['CARAM', 'GOMITA', 'CHUPETIN', 'GOLOSINA', 'CHICLE', 'PASTILLA'], categoria: 'Golosinas' },
-    { palabras: ['CRLS', 'CEREAL', 'BARRITA'], categoria: 'Cereales' },
-    // Bebidas
-    { palabras: ['GASEOSA', 'COCA', 'PEPSI', 'SPRITE', 'FANTA', 'MANAOS', 'SCHWEPPES', '7UP'], categoria: 'Gaseosas' },
-    { palabras: ['AGUA MIN', 'AGUA SAB', 'AGUA SIN'], categoria: 'Aguas' },
-    { palabras: ['JUGO', 'NESTEA', 'TANG', 'CLIGHT'], categoria: 'Jugos' },
-    { palabras: ['CERVEZA'], categoria: 'Cervezas' },
-    { palabras: ['VINO'], categoria: 'Vinos' },
-    { palabras: ['FERNET', 'WHISKY', 'WISKY', 'GIN ', 'VODKA', 'APERITIVO', 'GANCIA'], categoria: 'Bebidas Blancas' },
-    // Almacén
-    { palabras: ['ACEITE'], categoria: 'Aceites' },
-    { palabras: ['ARROZ'], categoria: 'Arroz' },
-    { palabras: ['AZUC'], categoria: 'Azúcar' },
-    { palabras: ['YERBA', 'MATE COCID'], categoria: 'Yerba y Mate' },
-    { palabras: ['CAFE', 'CAPUCHIN'], categoria: 'Café' },
-    { palabras: ['HARINA'], categoria: 'Harinas' },
-    { palabras: ['CONSERV', 'ATUN', 'CABALLA', 'SARDINA', 'PURE TOMATE', 'ARVEJA', 'CHOCLO'], categoria: 'Conservas' },
-    { palabras: ['LENTEJA', 'POROTO', 'GARBANZO', 'LEGUMBRE'], categoria: 'Legumbres' },
-    { palabras: ['FIDEO', 'PASTA SEC', 'SPAGHETTI', 'MOSTACHO', 'TALLAR'], categoria: 'Fideos' },
-    { palabras: ['SAL FIN', 'SAL GRUE', 'CONDIMENTO', 'PIMIENTA', 'OREGANO'], categoria: 'Condimentos' },
-    // Lácteos (después de snacks para evitar conflictos con "queso")
-    { palabras: ['LECHE', 'YOGUR', 'MANTECA', 'CREMA DE LECHE', 'DULCE DE LECHE', 'QUESO RALL', 'QUESO UNT', 'QUESO CREM', 'QUESO POR', 'QUESO BARR'], categoria: 'Lácteos' },
-    // Limpieza e higiene
-    { palabras: ['DETERG', 'LAVANDINA', 'JABON EN POLV', 'JABON LIQ', 'SUAVIZ', 'LIMPIA', 'DESINF', 'LUSTRA', 'CERA '], categoria: 'Limpieza' },
-    { palabras: ['SHAMPO', 'SHAMPU', 'JABON DE TOC', 'DESODOR', 'PASTA DENT', 'CEPILLO DE D', 'ENJUAGUE'], categoria: 'Higiene Personal' },
-    { palabras: ['PAPEL HIG', 'TOALLA DE PAP', 'SERVILLET', 'ROLLO COC', 'PAÑUELO'], categoria: 'Papelería' },
-    // Mascotas y bebés
-    { palabras: ['ALIMENTO PERR', 'ALIMENTO GAT', 'CACHORR', 'GATITO'], categoria: 'Mascotas' },
-    { palabras: ['PAÑAL', 'TOALLITA HUM', 'BEBE'], categoria: 'Bebés' },
+    { codigo: 'AFJ',    categoria: 'Alfajores' },
+    { codigo: 'FIDEO',  categoria: 'Fideos' },
+    { codigo: 'CHOC',   categoria: 'Chocolates' },
+    { codigo: 'BMB',    categoria: 'Bombones' },
+    { codigo: 'CRM',    categoria: 'Caramelos' },
+    { codigo: 'CTN',    categoria: 'Chupetines' },
+    { codigo: 'TRTA',   categoria: 'Tortas' },
+    { codigo: 'FSTA',   categoria: 'Fiesta 🎅' },
+    { codigo: 'SNK',    categoria: 'Snacks' },
+    { codigo: 'CLQ',    categoria: 'Apto celíacos sin TACC' },
+    { codigo: 'GLSN',   categoria: 'Golosinas' },
+    { codigo: 'GRANEL', categoria: 'Granel' },
+    { codigo: 'PLLS',   categoria: 'Pastillas' },
+    { codigo: 'TST',    categoria: 'Tostadas' },
+    { codigo: 'MRG',    categoria: 'Merengues' },
+    { codigo: 'CRLS',   categoria: 'Cereales' },
+    { codigo: 'DTC',    categoria: 'Dietéticas' },
+    { codigo: 'OTRO',   categoria: 'Almacen' },
   ];
-  
+
   for (const regla of reglas) {
-    if (regla.palabras.some(p => desc.includes(p))) return regla.categoria;
+    // \\b = límite de palabra, para que el código esté aislado
+    const patron = new RegExp('\\b' + regla.codigo + '\\b');
+    if (patron.test(desc)) return regla.categoria;
   }
-  return marca || 'Sin categoría';
+  return 'Otros';
 };
 
 // Componente del logo
@@ -435,15 +424,18 @@ function PantallaCarga({ progreso, logoUrl }) {
 
       {/* Ruta con el camioncito que avanza */}
       <div style={{ width: 'min(420px, 85vw)', position: 'relative', marginBottom: 12 }}>
-        {/* Camioncito */}
+        {/* Camioncito (logo de la distribuidora) */}
         <div style={{
           position: 'absolute',
-          left: `calc(${pct}% - 20px)`,
-          top: -34,
-          transition: 'left 0.3s ease-out',
-          fontSize: 34, lineHeight: 1
+          left: `calc(${pct}% - 26px)`,
+          top: -44,
+          transition: 'left 0.3s ease-out'
         }}>
-          🚚
+          <img
+            src="https://res.cloudinary.com/dijfepcwx/image/upload/v1777575125/LOGO_DISTRIBUIDORA_i3ljp2.jpg"
+            alt="camión"
+            style={{ width: 52, height: 'auto', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}
+          />
         </div>
         {/* Barra de la ruta */}
         <div style={{
