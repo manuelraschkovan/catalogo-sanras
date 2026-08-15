@@ -401,62 +401,82 @@ function PantallaLogin({ onLogin, clientes }) {
   );
 }
 
-// ============ PANTALLA DE CARGA (camioncito) ============
+// ============ PANTALLA DE CARGA (camión: galpón → comercio) ============
 function PantallaCarga({ progreso, logoUrl }) {
   const pct = Math.min(Math.max(progreso, 0), 100);
+
+  const IMG_GALPON   = 'https://res.cloudinary.com/dijfepcwx/image/upload/v1786811789/Galpon_animado_distribuidora.png';
+  const IMG_COMERCIO = 'https://res.cloudinary.com/dijfepcwx/image/upload/v1786811792/Comercio_animado.png';
+  const IMG_CAMION   = 'https://res.cloudinary.com/dijfepcwx/image/upload/v1786811040/Logo_camioneta.png';
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 100,
-      background: 'linear-gradient(135deg, #0a2a5e 0%, #1e4a8c 100%)',
+      background: 'linear-gradient(180deg, #7ec8f0 0%, #b3e0f7 55%, #d4eefb 100%)',
       display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', padding: '24px'
+      alignItems: 'center', justifyContent: 'center', padding: '24px',
+      overflow: 'hidden'
     }}>
-      {/* Logo de la distribuidora */}
+      {/* Logo de la distribuidora arriba */}
       <img
         src={logoUrl}
         alt="Distribuidora San-Ras"
-        style={{ width: 160, maxWidth: '60%', borderRadius: 16, marginBottom: 40, boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}
+        style={{ width: 150, maxWidth: '55%', borderRadius: 16, marginBottom: 24, boxShadow: '0 8px 30px rgba(0,0,0,0.2)' }}
       />
 
-      <div style={{ color: 'white', fontSize: 18, fontWeight: 700, marginBottom: 24, textAlign: 'center' }}>
-        Sincronizando catálogo...
+      <div style={{ color: '#0a2a5e', fontSize: 18, fontWeight: 800, marginBottom: 28, textAlign: 'center' }}>
+        Preparando tu pedido...
       </div>
 
-      {/* Ruta con el camioncito que avanza */}
-      <div style={{ width: 'min(420px, 85vw)', position: 'relative', marginBottom: 12 }}>
-        {/* Camioncito (logo de la distribuidora) */}
+      {/* Escena: galpón --- calle con camión --- comercio */}
+      <div style={{ width: 'min(520px, 92vw)', position: 'relative', height: 150 }}>
+
+        {/* Galpón (origen, izquierda) */}
+        <img src={IMG_GALPON} alt="galpón"
+          style={{ position: 'absolute', left: 0, bottom: 34, width: 92, height: 'auto', zIndex: 2 }} />
+
+        {/* Comercio (destino, derecha) */}
+        <img src={IMG_COMERCIO} alt="comercio"
+          style={{ position: 'absolute', right: 0, bottom: 34, width: 92, height: 'auto', zIndex: 2 }} />
+
+        {/* La calle */}
         <div style={{
-          position: 'absolute',
-          left: `calc(${pct}% - 26px)`,
-          top: -44,
-          transition: 'left 0.3s ease-out'
+          position: 'absolute', left: 0, right: 0, bottom: 0, height: 34,
+          background: '#3a3f47', borderRadius: 4
         }}>
-          <img
-            src="https://res.cloudinary.com/dijfepcwx/image/upload/v1777575125/LOGO_DISTRIBUIDORA_i3ljp2.jpg"
-            alt="camión"
-            style={{ width: 52, height: 'auto', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}
-          />
-        </div>
-        {/* Barra de la ruta */}
-        <div style={{
-          height: 8, borderRadius: 8, background: 'rgba(255,255,255,0.2)',
-          overflow: 'hidden', position: 'relative'
-        }}>
+          {/* Línea discontinua central de la calle */}
           <div style={{
-            height: '100%', width: `${pct}%`,
-            background: 'linear-gradient(90deg, #ffd54f, #ffb300)',
-            borderRadius: 8, transition: 'width 0.3s ease-out'
+            position: 'absolute', top: '50%', left: 8, right: 8, height: 3,
+            transform: 'translateY(-50%)',
+            backgroundImage: 'repeating-linear-gradient(90deg, #ffd54f 0 18px, transparent 18px 34px)'
           }} />
         </div>
-        {/* Líneas de la ruta (decorativo) */}
-        <div style={{
-          position: 'absolute', top: 3, left: 0, right: 0, height: 2,
-          backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.5) 0 10px, transparent 10px 20px)'
-        }} />
+
+        {/* Camioncito que avanza por la calle.
+            Va del 8% al 84% del ancho para salir del galpón y llegar al comercio. */}
+        <img src={IMG_CAMION} alt="camión"
+          style={{
+            position: 'absolute',
+            left: `calc(${8 + (pct * 0.76)}% - 28px)`,
+            bottom: 24,
+            width: 64, height: 'auto', zIndex: 3,
+            transition: 'left 0.3s ease-out',
+            filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.3))'
+          }} />
       </div>
 
-      <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 600 }}>
-        {Math.round(pct)}%
+      {/* Barra de progreso fina + porcentaje */}
+      <div style={{ width: 'min(520px, 92vw)', marginTop: 26 }}>
+        <div style={{ height: 6, borderRadius: 6, background: 'rgba(10,42,94,0.15)', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', width: `${pct}%`,
+            background: 'linear-gradient(90deg, #1e4a8c, #0a2a5e)',
+            borderRadius: 6, transition: 'width 0.3s ease-out'
+          }} />
+        </div>
+        <div style={{ textAlign: 'center', color: '#0a2a5e', fontSize: 14, fontWeight: 700, marginTop: 8 }}>
+          {Math.round(pct)}%
+        </div>
       </div>
     </div>
   );
