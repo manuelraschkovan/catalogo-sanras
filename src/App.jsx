@@ -319,7 +319,7 @@ function PantallaLogin({ onLogin }) {
       });
       const data = await r.json();
       if (data.ok) {
-        onLogin({ tipo: 'cliente', ...data.cliente });
+        onLogin({ tipo: 'cliente', token: data.token, ...data.cliente });
       } else if (data.motivo === 'no_registrado') {
         setError('Todavía no tenés cuenta. Registrate para crear tu contraseña.');
         setModo('registro');
@@ -353,7 +353,7 @@ function PantallaLogin({ onLogin }) {
       });
       const data = await r.json();
       if (data.ok) {
-        onLogin({ tipo: 'cliente', ...data.cliente });
+        onLogin({ tipo: 'cliente', token: data.token, ...data.cliente });
       } else {
         setError(data.motivo || 'No se pudo registrar.');
       }
@@ -650,6 +650,9 @@ export default function App() {
   const [mensajeCarga, setMensajeCarga] = useState('');
   const [tipoCargaArchivo, setTipoCargaArchivo] = useState('listas-excel');
   const [carrito, setCarrito] = useState({});
+  const [enviandoPedido, setEnviandoPedido] = useState(false);
+  const [pedidoOk, setPedidoOk] = useState(null);       // { numero, total, items }
+  const [pedidoError, setPedidoError] = useState('');
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const [mostrarAdmin, setMostrarAdmin] = useState(false);
   const [modoSeleccion, setModoSeleccion] = useState({});
@@ -659,6 +662,29 @@ export default function App() {
   const [cargandoBackend, setCargandoBackend] = useState(false);
   const [errorBackend, setErrorBackend] = useState('');
   const fileInputRef = useRef(null);
+
+  // --- Carrito persistente (se guarda por cliente en el navegador) ---
+  const claveCarritoGuardado = usuario && usuario.codigo ? `carrito_sanras_${usuario.codigo}` : null;
+
+  // Al entrar un cliente, recuperar su carrito guardado (si hay)
+  useEffect(() => {
+    if (!claveCarritoGuardado) return;
+    try {
+      const guardado = window.localStorage.getItem(claveCarritoGuardado);
+      if (guardado) {
+        const obj = JSON.parse(guardado);
+        if (obj && typeof obj === 'object') setCarrito(obj);
+      }
+    } catch (e) { /* si localStorage no está disponible, seguimos sin recuperar */ }
+  }, [claveCarritoGuardado]);
+
+  // Cada vez que cambia el carrito, guardarlo
+  useEffect(() => {
+    if (!claveCarritoGuardado) return;
+    try {
+      window.localStorage.setItem(claveCarritoGuardado, JSON.stringify(carrito));
+    } catch (e) { /* sin persistencia si falla */ }
+  }, [carrito, claveCarritoGuardado]);
 
   // Cuando el usuario entra, traemos los productos del backend (Flexxus)
   // con el precio de SU lista. Si el backend no responde, quedan los de ejemplo.
@@ -1080,49 +1106,46 @@ export default function App() {
   // los productos lleguen del backend (primera sincronización).
   if (!yaSincronizo) return <PantallaCarga progreso={progresoCarga} logoUrl={LOGO_URL} />;
 
-  const enviarPedidoWhatsApp = () => {
+  const enviarPedido = async () => {
     if (Object.keys(carrito).length === 0 || !cumpleMinimo) return;
+    if (!usuario.token) {
+      setPedidoError('Tu sesión expiró. Volvé a iniciar sesión para enviar el pedido.');
+      return;
+    }
 
-    let mensaje = `*🛒 NUEVO PEDIDO - DISTRIBUIDORA SAN-RAS SA*\n`;
-    mensaje += `━━━━━━━━━━━━━━━━━━━━\n`;
-    
-    if (esConsumidor) {
-      mensaje += `*Tipo:* Consumidor Final\n*Lista:* 4\n`;
-    } else {
-      mensaje += `*Cliente:* ${usuario.nombre}\n*N° Cliente:* ${usuario.codigo}\n*Lista:* ${listaActual}\n`;
-      if (usuario.ciudad) mensaje += `*Ciudad:* ${usuario.ciudad}\n`;
+    // Armamos los items en el formato que espera el backend: { codigoArticulo, cantidad }
+    // (el precio lo pone Flexxus, no lo mandamos por seguridad)
+    const items = Object.values(carrito).map(item => ({
+      codigoArticulo: item.producto.codigo,
+      cantidad: item.cantidad
+    }));
+
+    // Observación con la modalidad de entrega, para que ustedes la vean en Flexxus
+    let obs = 'Pedido web catalogo';
+    if (puedeElegirEnvio) obs += modalidadEntrega === 'envio' ? ' - ENVIO a domicilio' : ' - RETIRO en local';
+
+    setEnviandoPedido(true);
+    setPedidoError('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/pedido`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token, items, observaciones: obs })
+      });
+      const data = await r.json();
+      if (data.ok) {
+        setPedidoOk({ numero: data.numeroPedido, total: data.total, items: data.totalItems });
+        setCarrito({});   // vaciar el carrito al confirmar
+        try { if (claveCarritoGuardado) window.localStorage.removeItem(claveCarritoGuardado); } catch (e) {}
+      } else if (data.motivo === 'sesion_vencida') {
+        setPedidoError('Tu sesión expiró. Volvé a iniciar sesión para enviar el pedido.');
+      } else {
+        setPedidoError(data.motivo || 'No se pudo enviar el pedido.');
+      }
+    } catch (e) {
+      setPedidoError('No se pudo conectar. Revisá tu internet e intentá de nuevo.');
+    } finally {
+      setEnviandoPedido(false);
     }
-    mensaje += `*Fecha:* ${new Date().toLocaleDateString('es-AR')}\n`;
-    
-    // Modalidad de entrega
-    if (esConsumidor) {
-      mensaje += `*Entrega:* 📍 Retiro en distribuidora\n`;
-    } else if (puedeElegirEnvio) {
-      mensaje += `*Entrega:* ${modalidadEntrega === 'envio' ? '🚚 Envío a domicilio' : '📍 Retiro en local'}\n`;
-    } else if (listaActual === 5) {
-      mensaje += `*Entrega:* 📍 Retiro en distribuidora (Lista 5)\n`;
-    } else {
-      mensaje += `*Entrega:* 📍 Retiro en distribuidora\n`;
-    }
-    
-    mensaje += `━━━━━━━━━━━━━━━━━━━━\n\n*PRODUCTOS:*\n`;
-    
-    Object.values(carrito).forEach(item => {
-      const precio = item.unidad === 'bulto' ? obtenerPrecioBulto(item.producto) : obtenerPrecioUnitario(item.producto);
-      const subtotal = precio * item.cantidad;
-      const tipoUnidad = item.unidad === 'bulto' ? `BULTO x${item.producto.unidadesPorBulto}` : 'UN';
-      mensaje += `\n• [${item.producto.codigo}] ${item.producto.nombre}`;
-      mensaje += `\n  ${item.cantidad} ${tipoUnidad} × ${formatearPrecio(precio)} = *${formatearPrecio(subtotal)}*`;
-    });
-    
-    mensaje += `\n\n━━━━━━━━━━━━━━━━━━━━\n*Subtotal:* ${formatearPrecio(subtotalCarrito)}\n`;
-    if (tieneDescuento) mensaje += `*Descuento 5% (retiro):* -${formatearPrecio(descuento)}\n`;
-    mensaje += `*TOTAL:* ${formatearPrecio(totalCarrito)}`;
-    
-    const urlWhatsApp = ENVIO_WHATSAPP_ACTIVO 
-      ? `https://wa.me/${WHATSAPP_DISTRIBUIDORA}?text=${encodeURIComponent(mensaje)}`
-      : `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
-    window.open(urlWhatsApp, '_blank');
   };
 
   const cerrarSesion = () => {
@@ -1490,6 +1513,32 @@ export default function App() {
         )}
       </main>
 
+      {/* Confirmación de pedido cargado en Flexxus */}
+      {pedidoOk && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+            <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#dcfce7' }}>
+              <Check className="w-9 h-9" style={{ color: '#16a34a' }} />
+            </div>
+            <h3 className="text-xl font-black mb-1" style={{ color: COLORS.azul }}>¡Pedido enviado!</h3>
+            <p className="text-gray-600 text-sm mb-4">
+              Tu pedido entró correctamente. Lo vamos a revisar y preparar.
+            </p>
+            <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">N° de pedido</span><strong>{pedidoOk.numero}</strong></div>
+              <div className="flex justify-between"><span className="text-gray-500">Artículos</span><strong>{pedidoOk.items}</strong></div>
+              {pedidoOk.total != null && (
+                <div className="flex justify-between"><span className="text-gray-500">Total</span><strong>{formatearPrecio(pedidoOk.total)}</strong></div>
+              )}
+            </div>
+            <button onClick={() => { setPedidoOk(null); setMostrarCarrito(false); }}
+              className="w-full py-3 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>
+              Listo
+            </button>
+          </div>
+        </div>
+      )}
+
       {mostrarCarrito && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col">
@@ -1609,13 +1658,20 @@ export default function App() {
                   </div>
                 )}
 
+                {pedidoError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>{pedidoError}</div>
+                  </div>
+                )}
+
                 <button
-                  onClick={enviarPedidoWhatsApp}
-                  disabled={!cumpleMinimo}
+                  onClick={enviarPedido}
+                  disabled={!cumpleMinimo || enviandoPedido}
                   className="w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: cumpleMinimo ? '#16a34a' : undefined }}
+                  style={{ backgroundColor: (cumpleMinimo && !enviandoPedido) ? '#16a34a' : undefined }}
                 >
-                  <Send className="w-5 h-5" />Enviar pedido por WhatsApp
+                  <Send className="w-5 h-5" />{enviandoPedido ? 'Enviando pedido…' : 'Confirmar y enviar pedido'}
                 </button>
               </div>
             )}
