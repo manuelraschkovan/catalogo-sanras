@@ -285,6 +285,13 @@ function ControlCantidad({ producto, modoActual, cantidadActual, onAgregar, onEs
 }
 
 // ============ PANTALLA DE LOGIN ============
+const PROVINCIAS_AR = [
+  'Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes',
+  'Entre Ríos', 'Formosa', 'Jujuy', 'La Pampa', 'La Rioja', 'Mendoza', 'Misiones',
+  'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe',
+  'Santiago del Estero', 'Tierra del Fuego', 'Tucumán'
+];
+
 function PantallaLogin({ onLogin }) {
   // modo: 'inicio' | 'login' | 'registro' | 'recuperar'
   const [modo, setModo] = useState('inicio');
@@ -293,10 +300,12 @@ function PantallaLogin({ onLogin }) {
   const [cuit, setCuit] = useState('');
   const [password2, setPassword2] = useState('');
   const [direccion, setDireccion] = useState('');
+  const [provincia, setProvincia] = useState('');
+  const [localidad, setLocalidad] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
-  const limpiar = () => { setError(''); setPassword(''); setPassword2(''); setCuit(''); setDireccion(''); };
+  const limpiar = () => { setError(''); setPassword(''); setPassword2(''); setCuit(''); setDireccion(''); setProvincia(''); setLocalidad(''); };
 
   // --- LOGIN (código + contraseña) ---
   const hacerLogin = async () => {
@@ -326,14 +335,21 @@ function PantallaLogin({ onLogin }) {
   const hacerRegistro = async () => {
     setError('');
     if (!codigo.trim() || !cuit.trim()) { setError('Completá tu código de cliente y CUIT.'); return; }
-    if (!direccion.trim()) { setError('Ingresá la dirección de tu comercio.'); return; }
+    if (modo === 'registro') {
+      if (!provincia.trim()) { setError('Elegí tu provincia.'); return; }
+      if (!localidad.trim()) { setError('Ingresá tu localidad.'); return; }
+      if (!direccion.trim()) { setError('Ingresá la dirección de tu comercio.'); return; }
+    }
     if (password.length < 4) { setError('La contraseña debe tener al menos 4 caracteres.'); return; }
     if (password !== password2) { setError('Las contraseñas no coinciden.'); return; }
     setCargando(true);
     try {
       const r = await fetch(`${BACKEND_URL}/api/registro`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ codigoCliente: codigo.trim(), cuit: cuit.trim(), password, direccion: direccion.trim() })
+        body: JSON.stringify({
+          codigoCliente: codigo.trim(), cuit: cuit.trim(), password,
+          direccion: direccion.trim(), provincia: provincia.trim(), localidad: localidad.trim()
+        })
       });
       const data = await r.json();
       if (data.ok) {
@@ -448,8 +464,23 @@ function PantallaLogin({ onLogin }) {
             </div>
             {modo === 'registro' && (
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Provincia</label>
+                <select value={provincia} onChange={(e) => setProvincia(e.target.value)} className={inputCls}>
+                  <option value="">Elegí tu provincia…</option>
+                  {PROVINCIAS_AR.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            )}
+            {modo === 'registro' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Localidad</label>
+                <input type="text" value={localidad} onChange={(e) => setLocalidad(e.target.value)} placeholder="Ej: Bahía Blanca" className={inputCls} />
+              </div>
+            )}
+            {modo === 'registro' && (
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dirección de tu comercio</label>
-                <input type="text" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle, número, localidad" className={inputCls} />
+                <input type="text" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle y número" className={inputCls} />
               </div>
             )}
             <div>
