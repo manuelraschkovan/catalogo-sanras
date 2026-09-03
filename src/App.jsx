@@ -76,6 +76,26 @@ const obtenerUrlImagen = (codigo, nombre) => {
   return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,h_400,c_pad,b_white,q_auto,f_auto/v${SELLO_CACHE}/${codigo}`;
 };
 
+// Genera el nombre de archivo del logo de una marca (misma regla que ver-marcas.js)
+// "ALF GULA" -> "marca_alf_gula"
+const nombreArchivoLogoMarca = (marca) => {
+  if (!marca) return null;
+  return 'marca_' + String(marca)
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[´`'']/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+};
+
+// URL del logo de la marca en Cloudinary (transparente, contenido en un cuadro).
+const obtenerUrlLogoMarca = (marca) => {
+  const nombre = nombreArchivoLogoMarca(marca);
+  if (!nombre) return null;
+  // c_pad + b_transparent: el logo entero, sin recortar, sobre fondo transparente
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_200,h_200,c_pad,b_transparent,q_auto,f_auto/v${SELLO_CACHE}/${nombre}`;
+};
+
 // Detectar categoría especial según palabras clave en la descripción
 const detectarCategoriaEspecial = (descripcion, marca) => {
   const desc = (descripcion || '').toUpperCase();
@@ -112,6 +132,34 @@ const detectarCategoriaEspecial = (descripcion, marca) => {
   }
   return 'Otros';
 };
+
+// Muestra el logo de la marca si existe en Cloudinary; si no, muestra el texto.
+// tamaño: 'chico' (desplegable) | 'tarjeta' (card de producto)
+function LogoMarca({ marca, tamano = 'tarjeta', fallbackTexto = true }) {
+  const [falla, setFalla] = useState(false);
+  const url = obtenerUrlLogoMarca(marca);
+
+  // Si no hay marca o el logo falló, mostramos el texto (o nada)
+  if (!marca || !url || falla) {
+    if (!fallbackTexto) return null;
+    const cls = tamano === 'chico'
+      ? 'text-sm text-gray-700'
+      : 'text-xs font-bold uppercase tracking-wide';
+    const estilo = tamano === 'chico' ? {} : { color: COLORS.azul };
+    return <span className={cls} style={estilo}>{marca}</span>;
+  }
+
+  const altura = tamano === 'chico' ? 22 : 30;
+  return (
+    <img
+      src={url}
+      alt={marca}
+      title={marca}
+      style={{ height: altura, maxWidth: tamano === 'chico' ? 90 : 120, objectFit: 'contain', display: 'block' }}
+      onError={() => setFalla(true)}
+    />
+  );
+}
 
 // Componente del logo
 function LogoSanRas({ size = 'normal' }) {
@@ -515,7 +563,7 @@ function PantallaLogin({ onLogin }) {
 }
 
 // ============ PANTALLA DE CARGA (camión: galpón → comercio) ============
-function PantallaCarga({ progreso, logoUrl }) {
+function PantallaCarga({ progreso, logoUrl, logosMarcas }) {
   const pct = Math.min(Math.max(progreso, 0), 100);
 
   const IMG_GALPON   = 'https://res.cloudinary.com/dijfepcwx/image/upload/e_background_removal/v1786811789/Galpon_animado_distribuidora.png';
@@ -534,6 +582,7 @@ function PantallaCarga({ progreso, logoUrl }) {
         @keyframes sr-cloud { 0% { transform: translateX(0) } 100% { transform: translateX(40px) } }
         @keyframes sr-dash { to { background-position: -68px 0 } }
         @keyframes sr-fade { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+        @keyframes sr-marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
       `}</style>
 
       {/* Sol */}
@@ -618,6 +667,18 @@ function PantallaCarga({ progreso, logoUrl }) {
             {Math.round(pct)}%
           </div>
         </div>
+
+        {/* Franja de logos de marcas desfilando */}
+        {logosMarcas && logosMarcas.length > 0 && (
+          <div style={{ width: 'min(560px, 94vw)', marginTop: 24, overflow: 'hidden', maskImage: 'linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent)' }}>
+            <div style={{ display: 'flex', gap: 28, alignItems: 'center', animation: 'sr-marquee 18s linear infinite', width: 'max-content' }}>
+              {[...logosMarcas, ...logosMarcas].map((url, i) => (
+                <img key={i} src={url} alt="" style={{ height: 34, objectFit: 'contain', opacity: 0.9 }}
+                     onError={(e) => { e.target.style.display = 'none'; }} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -750,7 +811,7 @@ export default function App() {
   }, [productos]);
 
   const productosFiltrados = useMemo(() => {
-    return productos.filter(p => {
+    const filtrados = productos.filter(p => {
       const texto = busqueda.toLowerCase();
       const coincideBusqueda = p.nombre.toLowerCase().includes(texto) || 
                                 p.codigo.toLowerCase().includes(texto) ||
@@ -760,6 +821,15 @@ export default function App() {
       const coincideMarca = marcasSeleccionadas.length === 0 || marcasSeleccionadas.includes(p.marca);
       return coincideBusqueda && coincideCategoria && coincideMarca;
     });
+    // Orden alfabético por MARCA, y dentro de cada marca por nombre.
+    // Los sin marca van al final.
+    filtrados.sort((a, b) => {
+      const ma = (a.marca || 'ZZZZ').toLowerCase();
+      const mb = (b.marca || 'ZZZZ').toLowerCase();
+      if (ma !== mb) return ma.localeCompare(mb);
+      return (a.nombre || '').localeCompare(b.nombre || '');
+    });
+    return filtrados;
   }, [productos, busqueda, categoriaActiva, marcasSeleccionadas]);
 
   // Marcas agrupadas por letra inicial (para el menú desplegable A-B-C...)
@@ -1104,7 +1174,15 @@ export default function App() {
 
   // Después del login: pantalla de carga con el camioncito hasta que
   // los productos lleguen del backend (primera sincronización).
-  if (!yaSincronizo) return <PantallaCarga progreso={progresoCarga} logoUrl={LOGO_URL} />;
+  if (!yaSincronizo) {
+    // Logos que desfilan en la carga: los de las marcas ya cargadas, o una
+    // selección fija si todavía no hay productos.
+    const marcasParaLogos = productos.length > 0
+      ? [...new Set(productos.map(p => p.marca).filter(Boolean))].slice(0, 20)
+      : ['ARCOR GOLOSINAS', 'GRANIX', 'GUAYMALLEN', 'DON SATUR', 'CROPPERS GONATURAL', 'MOLTO', 'ALF GULA', 'VAUQUITA'];
+    const logosMarcas = marcasParaLogos.map(obtenerUrlLogoMarca).filter(Boolean);
+    return <PantallaCarga progreso={progresoCarga} logoUrl={LOGO_URL} logosMarcas={logosMarcas} />;
+  }
 
   const enviarPedido = async () => {
     if (Object.keys(carrito).length === 0 || !cumpleMinimo) return;
@@ -1345,7 +1423,7 @@ export default function App() {
                                 className="w-4 h-4 rounded"
                                 style={{ accentColor: COLORS.azul }}
                               />
-                              <span className="text-sm text-gray-700">{marca}</span>
+                              <LogoMarca marca={marca} tamano="chico" />
                             </label>
                           ))}
                         </div>
@@ -1447,7 +1525,9 @@ export default function App() {
                     />
                   </div>
                   <div className="p-3 flex-1 flex flex-col">
-                    <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.azul }}>{producto.marca || producto.categoria}</span>
+                    <div className="h-8 flex items-center mb-1">
+                      <LogoMarca marca={producto.marca || producto.categoria} tamano="tarjeta" />
+                    </div>
                     <h3 className="font-semibold text-gray-800 mt-1 mb-1 line-clamp-2 text-sm flex-1">{producto.nombre}</h3>
                     <div className="text-xs text-gray-400 mb-2">Cód: {producto.codigo}</div>
 
