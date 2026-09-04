@@ -76,11 +76,11 @@ const obtenerUrlImagen = (codigo, nombre) => {
   return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_400,h_400,c_pad,b_white,q_auto,f_auto/v${SELLO_CACHE}/${codigo}`;
 };
 
-// Genera el nombre de archivo del logo de una marca (misma regla que ver-marcas.js)
+// Genera el nombre de archivo del logo a partir de un texto (marca o sub-marca)
 // "ALF GULA" -> "marca_alf_gula"
-const nombreArchivoLogoMarca = (marca) => {
-  if (!marca) return null;
-  return 'marca_' + String(marca)
+const slugLogo = (texto) => {
+  if (!texto) return null;
+  return 'marca_' + String(texto)
     .toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[´`'']/g, '')
@@ -88,13 +88,43 @@ const nombreArchivoLogoMarca = (marca) => {
     .replace(/^_+|_+$/g, '');
 };
 
-// URL del logo de la marca en Cloudinary (transparente, contenido en un cuadro).
-const obtenerUrlLogoMarca = (marca) => {
-  const nombre = nombreArchivoLogoMarca(marca);
-  if (!nombre) return null;
-  // c_pad + b_transparent: el logo entero, sin recortar, sobre fondo transparente
-  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/w_200,h_200,c_pad,b_transparent,q_auto,f_auto/v${SELLO_CACHE}/${nombre}`;
+// Sub-marcas de Arcor: si la marca es ARCOR/ARCOR 2 y la descripción menciona
+// una de estas, usamos el logo de la sub-marca en vez del de Arcor.
+// Cada entrada: [regex que busca en la descripción, nombre de archivo del logo]
+const SUBMARCAS_ARCOR = [
+  [/\bALKA\b/i,   'marca_alka'],
+  [/\bMISKY\b/i,  'marca_misky'],
+  [/\bSUGUS\b/i,  'marca_sugus'],
+  [/\bLIA\b|\bLÍA\b/i, 'marca_lia'],   // Lía con y sin acento
+  [/\bHAMLET\b/i, 'marca_hamlet'],
+];
+
+// Decide el nombre de archivo del logo para un producto (marca + descripción).
+const nombreLogoProducto = (marca, descripcion) => {
+  const m = String(marca || '').toUpperCase();
+  const desc = String(descripcion || '');
+  // Si es Arcor, revisar sub-marcas
+  if (m === 'ARCOR' || m === 'ARCOR 2' || m.startsWith('ARCOR')) {
+    for (const [re, archivo] of SUBMARCAS_ARCOR) {
+      if (re.test(desc)) return archivo;
+    }
+  }
+  return slugLogo(marca);
 };
+
+// URL del logo en Cloudinary.
+//  e_trim: recorta bordes sobrantes de color uniforme (arregla Terepín, etc.)
+//  c_pad + b_transparent: mete el logo entero en un cuadro con fondo transparente
+//  Los chicos se ven mejor porque el trim saca el espacio vacío alrededor.
+const urlLogo = (nombreArchivo) => {
+  if (!nombreArchivo) return null;
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD}/image/upload/e_trim/w_240,h_240,c_pad,b_transparent,q_auto,f_auto/v${SELLO_CACHE}/${nombreArchivo}`;
+};
+
+// Para lugares donde solo hay marca (desplegable, barra de carga)
+const obtenerUrlLogoMarca = (marca) => urlLogo(slugLogo(marca));
+// Para la tarjeta de producto (considera sub-marcas de Arcor)
+const obtenerUrlLogoProducto = (marca, descripcion) => urlLogo(nombreLogoProducto(marca, descripcion));
 
 // Detectar categoría especial según palabras clave en la descripción
 const detectarCategoriaEspecial = (descripcion, marca) => {
@@ -135,9 +165,12 @@ const detectarCategoriaEspecial = (descripcion, marca) => {
 
 // Muestra el logo de la marca si existe en Cloudinary; si no, muestra el texto.
 // tamaño: 'chico' (desplegable) | 'tarjeta' (card de producto)
-function LogoMarca({ marca, tamano = 'tarjeta', fallbackTexto = true }) {
+// descripcion: opcional, para detectar sub-marcas de Arcor (Alka, Misky, etc.)
+function LogoMarca({ marca, descripcion, tamano = 'tarjeta', fallbackTexto = true }) {
   const [falla, setFalla] = useState(false);
-  const url = obtenerUrlLogoMarca(marca);
+  const url = descripcion != null
+    ? obtenerUrlLogoProducto(marca, descripcion)
+    : obtenerUrlLogoMarca(marca);
 
   // Si no hay marca o el logo falló, mostramos el texto (o nada)
   if (!marca || !url || falla) {
@@ -149,13 +182,13 @@ function LogoMarca({ marca, tamano = 'tarjeta', fallbackTexto = true }) {
     return <span className={cls} style={estilo}>{marca}</span>;
   }
 
-  const altura = tamano === 'chico' ? 22 : 30;
+  const altura = tamano === 'chico' ? 26 : 42;
   return (
     <img
       src={url}
       alt={marca}
       title={marca}
-      style={{ height: altura, maxWidth: tamano === 'chico' ? 90 : 120, objectFit: 'contain', display: 'block' }}
+      style={{ height: altura, maxWidth: tamano === 'chico' ? 100 : 150, objectFit: 'contain', display: 'block' }}
       onError={() => setFalla(true)}
     />
   );
@@ -673,7 +706,7 @@ function PantallaCarga({ progreso, logoUrl, logosMarcas }) {
           <div style={{ width: 'min(560px, 94vw)', marginTop: 24, overflow: 'hidden', maskImage: 'linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent)' }}>
             <div style={{ display: 'flex', gap: 28, alignItems: 'center', animation: 'sr-marquee 18s linear infinite', width: 'max-content' }}>
               {[...logosMarcas, ...logosMarcas].map((url, i) => (
-                <img key={i} src={url} alt="" style={{ height: 34, objectFit: 'contain', opacity: 0.9 }}
+                <img key={i} src={url} alt="" style={{ height: 44, objectFit: 'contain', opacity: 0.95 }}
                      onError={(e) => { e.target.style.display = 'none'; }} />
               ))}
             </div>
@@ -1178,8 +1211,10 @@ export default function App() {
     // Logos que desfilan en la carga: los de las marcas ya cargadas, o una
     // selección fija si todavía no hay productos.
     const marcasParaLogos = productos.length > 0
-      ? [...new Set(productos.map(p => p.marca).filter(Boolean))].slice(0, 20)
-      : ['ARCOR GOLOSINAS', 'GRANIX', 'GUAYMALLEN', 'DON SATUR', 'CROPPERS GONATURAL', 'MOLTO', 'ALF GULA', 'VAUQUITA'];
+      ? [...new Set(productos.map(p => p.marca).filter(Boolean))].slice(0, 30)
+      : ['ARCOR GOLOSINAS', 'ARCOR ALMACEN', 'GRANIX', 'GUAYMALLEN', 'DON SATUR', 'CROPPERS GONATURAL',
+         'MOLTO', 'ALF GULA', 'VAUQUITA', 'MAFALDA', 'DON EMILIO', 'GAONA', 'RIQUITOS', 'DOS HERMANOS',
+         'FELIPE FORT', 'NIKITOS', 'TRIO', 'ZUPAY', 'DULCOR SA', 'MANOLITO', 'CARIMEL', 'DONOSTI'];
     const logosMarcas = marcasParaLogos.map(obtenerUrlLogoMarca).filter(Boolean);
     return <PantallaCarga progreso={progresoCarga} logoUrl={LOGO_URL} logosMarcas={logosMarcas} />;
   }
@@ -1423,7 +1458,8 @@ export default function App() {
                                 className="w-4 h-4 rounded"
                                 style={{ accentColor: COLORS.azul }}
                               />
-                              <LogoMarca marca={marca} tamano="chico" />
+                              <LogoMarca marca={marca} tamano="chico" fallbackTexto={false} />
+                              <span className="text-sm text-gray-700">{marca}</span>
                             </label>
                           ))}
                         </div>
@@ -1525,8 +1561,8 @@ export default function App() {
                     />
                   </div>
                   <div className="p-3 flex-1 flex flex-col">
-                    <div className="h-8 flex items-center mb-1">
-                      <LogoMarca marca={producto.marca || producto.categoria} tamano="tarjeta" />
+                    <div className="h-11 flex items-center mb-1">
+                      <LogoMarca marca={producto.marca || producto.categoria} descripcion={producto.nombre} tamano="tarjeta" />
                     </div>
                     <h3 className="font-semibold text-gray-800 mt-1 mb-1 line-clamp-2 text-sm flex-1">{producto.nombre}</h3>
                     <div className="text-xs text-gray-400 mb-2">Cód: {producto.codigo}</div>
