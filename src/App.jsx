@@ -753,6 +753,9 @@ export default function App() {
   const [archivosListas, setArchivosListas] = useState({ listas1a4: null, lista5: null });
   const [procesandoListas, setProcesandoListas] = useState(false);
   const [modalidadEntrega, setModalidadEntrega] = useState('retiro'); // 'retiro' | 'envio'
+  const [diaRetiro, setDiaRetiro] = useState('');           // 'YYYY-MM-DD'
+  const [observacionesPedido, setObservacionesPedido] = useState('');
+  const [feriados, setFeriados] = useState([]);             // ['YYYY-MM-DD', ...]
   const [cargandoBackend, setCargandoBackend] = useState(false);
   const [errorBackend, setErrorBackend] = useState('');
   const fileInputRef = useRef(null);
@@ -830,6 +833,15 @@ export default function App() {
       });
 
     return () => { cancelado = true; clearInterval(intervalo); };
+  }, [usuario]);
+
+  // Cargar feriados (para bloquear en el calendario de retiro)
+  useEffect(() => {
+    if (!usuario || usuario.tipo === 'preview') return;
+    fetch(`${BACKEND_URL}/api/feriados`)
+      .then(r => r.json())
+      .then(data => { if (data && data.ok) setFeriados(data.feriados || []); })
+      .catch(() => {});
   }, [usuario]);
 
   const listaActual = usuario?.lista;
@@ -1219,10 +1231,50 @@ export default function App() {
     return <PantallaCarga progreso={progresoCarga} logoUrl={LOGO_URL} logosMarcas={logosMarcas} />;
   }
 
+  // Genera los días válidos para retiro: próximos 30 días, sin hoy, sin
+  // domingos, sin feriados. Devuelve [{ valor:'YYYY-MM-DD', etiqueta:'Lun 8/9' }]
+  const diasRetiroValidos = useMemo(() => {
+    const dias = [];
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const nombresDia = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    for (let i = 1; i <= 30 && dias.length < 20; i++) {
+      const d = new Date(hoy);
+      d.setDate(hoy.getDate() + i);
+      const diaSemana = d.getDay();           // 0 = domingo
+      if (diaSemana === 0) continue;           // sin domingos
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (feriados.includes(iso)) continue;    // sin feriados
+      const horario = diaSemana === 6 ? '8:30 a 11:30' : '7:30 a 15:30';
+      dias.push({
+        valor: iso,
+        etiqueta: `${nombresDia[diaSemana]} ${d.getDate()}/${d.getMonth() + 1}`,
+        horario
+      });
+    }
+    return dias;
+  }, [feriados]);
+
+  // Formatea 'YYYY-MM-DD' a 'DD/MM/AAAA' para mostrar y mandar
+  const formatearFecha = (iso) => {
+    if (!iso) return '';
+    const [a, m, d] = iso.split('-');
+    return `${d}/${m}/${a}`;
+  };
+
   const enviarPedido = async () => {
     if (Object.keys(carrito).length === 0 || !cumpleMinimo) return;
     if (!usuario.token) {
       setPedidoError('Tu sesión expiró. Volvé a iniciar sesión para enviar el pedido.');
+      return;
+    }
+
+    // Determinar la modalidad de entrega real
+    const entrega = puedeElegirEnvio ? modalidadEntrega : 'retiro';
+
+    // Si es retiro, el día es obligatorio
+    if (entrega === 'retiro' && !diaRetiro) {
+      setPedidoError('Elegí el día de retiro.');
       return;
     }
 
@@ -1233,21 +1285,24 @@ export default function App() {
       cantidad: item.cantidad
     }));
 
-    // Observación con la modalidad de entrega, para que ustedes la vean en Flexxus
-    let obs = 'Pedido web catalogo';
-    if (puedeElegirEnvio) obs += modalidadEntrega === 'envio' ? ' - ENVIO a domicilio' : ' - RETIRO en local';
-
     setEnviandoPedido(true);
     setPedidoError('');
     try {
       const r = await fetch(`${BACKEND_URL}/api/pedido`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: usuario.token, items, observaciones: obs })
+        body: JSON.stringify({
+          token: usuario.token,
+          items,
+          entrega,
+          diaRetiro: entrega === 'retiro' ? formatearFecha(diaRetiro) : '',
+          observaciones: observacionesPedido
+        })
       });
       const data = await r.json();
       if (data.ok) {
         setPedidoOk({ numero: data.numeroPedido, total: data.total, items: data.totalItems });
         setCarrito({});   // vaciar el carrito al confirmar
+        setDiaRetiro(''); setObservacionesPedido('');
         try { if (claveCarritoGuardado) window.localStorage.removeItem(claveCarritoGuardado); } catch (e) {}
       } else if (data.motivo === 'sesion_vencida') {
         setPedidoError('Tu sesión expiró. Volvé a iniciar sesión para enviar el pedido.');
@@ -1751,6 +1806,46 @@ export default function App() {
                     )}
                   </div>
                 )}
+
+                {/* Calendario de retiro (cuando la entrega es retiro) */}
+                {(!puedeElegirEnvio || modalidadEntrega === 'retiro') && (
+                  <div>
+                    <p className="text-sm font-bold mb-1" style={{ color: COLORS.azul }}>
+                      <Home className="w-4 h-4 inline mr-1" />¿Qué día retirás?
+                    </p>
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+                      Demora mínima de 24hs. Para casos excepcionales, comunicate al{' '}
+                      <a href={`https://wa.me/${WHATSAPP_DISTRIBUIDORA}`} target="_blank" rel="noopener noreferrer" className="font-bold underline">
+                        {TELEFONO_DISTRIBUIDORA_VISIBLE}
+                      </a>.
+                    </div>
+                    <select
+                      value={diaRetiro}
+                      onChange={(e) => setDiaRetiro(e.target.value)}
+                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-600 text-sm"
+                    >
+                      <option value="">Elegí el día…</option>
+                      {diasRetiroValidos.map(d => (
+                        <option key={d.valor} value={d.valor}>{d.etiqueta} ({d.horario})</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Lun a Vie 7:30–15:30 · Sáb 8:30–11:30
+                    </p>
+                  </div>
+                )}
+
+                {/* Observaciones del pedido */}
+                <div>
+                  <p className="text-sm font-bold mb-1" style={{ color: COLORS.azul }}>Observaciones (opcional)</p>
+                  <textarea
+                    value={observacionesPedido}
+                    onChange={(e) => setObservacionesPedido(e.target.value)}
+                    placeholder="Ej: mandar factura A, entregar en horario de la tarde, etc."
+                    rows={2}
+                    className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-600 text-sm resize-none"
+                  />
+                </div>
 
                 <div className="flex justify-between text-sm">
                   <span>Subtotal:</span>
