@@ -97,6 +97,7 @@ const SUBMARCAS_ARCOR = [
   [/\bSUGUS\b/i,  'marca_sugus'],
   [/\bLIA\b|\bLÍA\b/i, 'marca_lia'],   // Lía con y sin acento
   [/\bHAMLET\b/i, 'marca_hamlet'],
+  [/\bSAPITO\b/i, 'marca_sapito'],
 ];
 
 // Decide el nombre de archivo del logo para un producto (marca + descripción).
@@ -787,6 +788,10 @@ export default function App() {
   const [pedidoError, setPedidoError] = useState('');
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const [mostrarAdmin, setMostrarAdmin] = useState(false);
+  const [mostrarMisPedidos, setMostrarMisPedidos] = useState(false);
+  const [misPedidos, setMisPedidos] = useState([]);
+  const [cargandoPedidos, setCargandoPedidos] = useState(false);
+  const [pedidoExpandido, setPedidoExpandido] = useState(null);
   const [modoSeleccion, setModoSeleccion] = useState({});
   const [archivosListas, setArchivosListas] = useState({ listas1a4: null, lista5: null });
   const [procesandoListas, setProcesandoListas] = useState(false);
@@ -1361,6 +1366,23 @@ export default function App() {
     setCategoriaActiva('Todas');
   };
 
+  // Abre el histórico de pedidos y los trae del backend
+  const abrirMisPedidos = async () => {
+    setMostrarMisPedidos(true);
+    setPedidoExpandido(null);
+    if (!usuario.token) return;
+    setCargandoPedidos(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/mis-pedidos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token })
+      });
+      const data = await r.json();
+      if (data.ok) setMisPedidos(data.pedidos || []);
+    } catch (e) { /* si falla, queda la lista vacía */ }
+    finally { setCargandoPedidos(false); }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="text-white shadow-lg sticky top-0 z-40 relative" style={{ background: `linear-gradient(135deg, ${COLORS.azul} 0%, ${COLORS.azulOscuro} 100%)` }}>
@@ -1391,6 +1413,9 @@ export default function App() {
                 {cantidadItemsCarrito > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{cantidadItemsCarrito}</span>
                 )}
+              </button>
+              <button onClick={abrirMisPedidos} title="Mis pedidos" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
+                <Package className="w-5 h-5" />
               </button>
               <button onClick={() => setMostrarAdmin(true)} className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
                 <Settings className="w-5 h-5" />
@@ -1569,8 +1594,10 @@ export default function App() {
                     style={{ backgroundColor: COLORS.azul }}
                   >
                     {(() => {
+                      const sel = marcasSeleccionadas.length;
+                      if (sel > 0) return `Ver ${sel} marca${sel !== 1 ? 's' : ''} seleccionada${sel !== 1 ? 's' : ''}`;
                       const totalMarcas = Object.values(marcasPorLetra).reduce((s, arr) => s + arr.length, 0);
-                      return `Ver ${totalMarcas} marca${totalMarcas !== 1 ? 's' : ''}`;
+                      return `Ver todas (${totalMarcas} marcas)`;
                     })()}
                   </button>
                 </div>
@@ -1767,6 +1794,74 @@ export default function App() {
               className="w-full py-3 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>
               Listo
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Mis pedidos (histórico) */}
+      {mostrarMisPedidos && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
+              <h2 className="text-xl font-black flex items-center gap-2" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>
+                <Package className="w-5 h-5" />MIS PEDIDOS
+              </h2>
+              <button onClick={() => setMostrarMisPedidos(false)}><X className="w-6 h-6" /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {cargandoPedidos ? (
+                <div className="text-center py-12 text-gray-500">Cargando tus pedidos…</div>
+              ) : misPedidos.length === 0 ? (
+                <div className="text-center py-12">
+                  <Package className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">Todavía no hiciste pedidos</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {misPedidos.map(p => {
+                    const abierto = pedidoExpandido === p.numero;
+                    // fecha 'YYYY-MM-DD HH:MM:SS' -> 'DD/MM/AAAA'
+                    const fechaCorta = p.fecha ? p.fecha.split(' ')[0].split('-').reverse().join('/') : '';
+                    return (
+                      <div key={p.numero} className="border rounded-lg overflow-hidden">
+                        <button
+                          onClick={() => setPedidoExpandido(abierto ? null : p.numero)}
+                          className="w-full flex items-center justify-between p-3 hover:bg-gray-50 text-left"
+                        >
+                          <div>
+                            <div className="font-bold text-sm" style={{ color: COLORS.azul }}>Pedido N° {p.numero}</div>
+                            <div className="text-xs text-gray-500">{fechaCorta} · {p.totalItems} {p.totalItems === 1 ? 'artículo' : 'artículos'}
+                              {p.entrega === 'retiro' && p.diaRetiro ? ` · Retira ${p.diaRetiro}` : (p.entrega === 'envio' ? ' · Envío' : '')}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-sm" style={{ color: COLORS.azul }}>{formatearPrecio(p.total)}</span>
+                            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+                          </div>
+                        </button>
+
+                        {abierto && (
+                          <div className="border-t bg-gray-50 p-3 space-y-2">
+                            {p.detalle.map((it, i) => (
+                              <div key={i} className="flex justify-between text-xs">
+                                <div className="flex-1 min-w-0 pr-2">
+                                  <span className="text-gray-800">{it.descripcion || it.articulo}</span>
+                                  <span className="text-gray-400"> ({it.cantidad} × {formatearPrecio(it.precio)})</span>
+                                </div>
+                                <span className="font-semibold whitespace-nowrap" style={{ color: COLORS.azul }}>
+                                  {formatearPrecio(it.precio * it.cantidad)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
