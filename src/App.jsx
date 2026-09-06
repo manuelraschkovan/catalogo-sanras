@@ -767,6 +767,96 @@ function Nube() {
   );
 }
 
+// ============ CALENDARIO DE RETIRO ============
+// Muestra un mes con los días. Deshabilita: hoy y días pasados, domingos y feriados.
+// seleccionado / onSeleccionar usan formato 'YYYY-MM-DD'.
+function CalendarioRetiro({ feriados, seleccionado, onSeleccionar }) {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  // Mes que se está mostrando (arranca en el mes actual)
+  const [mesVista, setMesVista] = useState(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+
+  const anio = mesVista.getFullYear();
+  const mes = mesVista.getMonth();
+  const nombresMes = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const nombresDiaCorto = ['Do','Lu','Ma','Mi','Ju','Vi','Sa'];
+
+  const primerDia = new Date(anio, mes, 1).getDay();      // 0=domingo
+  const diasEnMes = new Date(anio, mes + 1, 0).getDate();
+
+  // ¿Se puede ir al mes anterior? (no antes del mes actual)
+  const puedeAnterior = new Date(anio, mes, 1) > new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+
+  const iso = (d) => `${anio}-${String(mes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+  const estaDeshabilitado = (d) => {
+    const fecha = new Date(anio, mes, d);
+    fecha.setHours(0, 0, 0, 0);
+    if (fecha <= hoy) return true;                 // hoy y días pasados
+    if (fecha.getDay() === 0) return true;         // domingos
+    if (feriados.includes(iso(d))) return true;    // feriados
+    return false;
+  };
+
+  // Armar las celdas (huecos antes del día 1 + días del mes)
+  const celdas = [];
+  for (let i = 0; i < primerDia; i++) celdas.push(null);
+  for (let d = 1; d <= diasEnMes; d++) celdas.push(d);
+
+  return (
+    <div className="border-2 border-gray-200 rounded-lg p-3">
+      {/* Encabezado mes + navegación */}
+      <div className="flex items-center justify-between mb-2">
+        <button
+          type="button"
+          onClick={() => puedeAnterior && setMesVista(new Date(anio, mes - 1, 1))}
+          disabled={!puedeAnterior}
+          className={`p-1 rounded ${puedeAnterior ? 'hover:bg-gray-100' : 'opacity-30 cursor-not-allowed'}`}
+        >
+          <ChevronLeft className="w-5 h-5" style={{ color: COLORS.azul }} />
+        </button>
+        <span className="font-bold text-sm" style={{ color: COLORS.azul }}>{nombresMes[mes]} {anio}</span>
+        <button
+          type="button"
+          onClick={() => setMesVista(new Date(anio, mes + 1, 1))}
+          className="p-1 rounded hover:bg-gray-100"
+        >
+          <ChevronRight className="w-5 h-5" style={{ color: COLORS.azul }} />
+        </button>
+      </div>
+
+      {/* Nombres de días */}
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {nombresDiaCorto.map((n, i) => (
+          <div key={i} className="text-center text-xs font-bold text-gray-400">{n}</div>
+        ))}
+      </div>
+
+      {/* Días */}
+      <div className="grid grid-cols-7 gap-1">
+        {celdas.map((d, i) => {
+          if (d === null) return <div key={i} />;
+          const dis = estaDeshabilitado(d);
+          const sel = seleccionado === iso(d);
+          return (
+            <button
+              key={i}
+              type="button"
+              disabled={dis}
+              onClick={() => onSeleccionar(iso(d))}
+              className={`aspect-square rounded-lg text-sm font-semibold flex items-center justify-center transition-colors
+                ${sel ? 'text-white' : dis ? 'text-gray-300 cursor-not-allowed' : 'text-gray-700 hover:bg-blue-50'}`}
+              style={sel ? { backgroundColor: COLORS.azul } : {}}
+            >
+              {d}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ============ APP PRINCIPAL ============
 export default function App() {
   const [usuario, setUsuario] = useState(null);
@@ -886,30 +976,6 @@ export default function App() {
       .then(data => { if (data && data.ok) setFeriados(data.feriados || []); })
       .catch(() => {});
   }, [usuario]);
-
-  // Genera los días válidos para retiro: próximos 30 días, sin hoy, sin
-  // domingos, sin feriados. (Es un hook: va ANTES de cualquier return.)
-  const diasRetiroValidos = useMemo(() => {
-    const dias = [];
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    const nombresDia = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    for (let i = 1; i <= 30 && dias.length < 20; i++) {
-      const d = new Date(hoy);
-      d.setDate(hoy.getDate() + i);
-      const diaSemana = d.getDay();
-      if (diaSemana === 0) continue;
-      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      if (feriados.includes(iso)) continue;
-      const horario = diaSemana === 6 ? '8:30 a 11:30' : '7:30 a 15:30';
-      dias.push({
-        valor: iso,
-        etiqueta: `${nombresDia[diaSemana]} ${d.getDate()}/${d.getMonth() + 1}`,
-        horario
-      });
-    }
-    return dias;
-  }, [feriados]);
 
   const listaActual = usuario?.lista;
   const esConsumidor = usuario?.tipo === 'consumidor';
@@ -1975,18 +2041,13 @@ export default function App() {
                         {TELEFONO_DISTRIBUIDORA_VISIBLE}
                       </a>.
                     </div>
-                    <select
-                      value={diaRetiro}
-                      onChange={(e) => setDiaRetiro(e.target.value)}
-                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-600 text-sm"
-                    >
-                      <option value="">Elegí el día…</option>
-                      {diasRetiroValidos.map(d => (
-                        <option key={d.valor} value={d.valor}>{d.etiqueta} ({d.horario})</option>
-                      ))}
-                    </select>
+                    <CalendarioRetiro
+                      feriados={feriados}
+                      seleccionado={diaRetiro}
+                      onSeleccionar={setDiaRetiro}
+                    />
                     <p className="text-xs text-gray-400 mt-1">
-                      Lun a Vie 7:30–15:30 · Sáb 8:30–11:30
+                      Lun a Vie 7:30–15:30 · Sáb 8:30–11:30 · Dom cerrado
                     </p>
                   </div>
                 )}
