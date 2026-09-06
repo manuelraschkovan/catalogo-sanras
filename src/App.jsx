@@ -164,26 +164,38 @@ const detectarCategoriaEspecial = (descripcion, marca) => {
 };
 
 // Banda separadora que va arriba de cada grupo de marca.
-// Muestra el logo si existe; si no, el nombre en grande.
+// Muestra el logo (si existe) Y el nombre al lado.
 function BandaMarca({ marca }) {
   const [falla, setFalla] = useState(false);
   const url = obtenerUrlLogoMarca(marca);
-  if (!marca || !url || falla) {
-    return <span className="text-xl font-black uppercase tracking-tight" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>{marca}</span>;
-  }
-  return <img src={url} alt={marca} title={marca} style={{ height: 44, maxWidth: 200, objectFit: 'contain' }} onError={() => setFalla(true)} />;
+  const hayLogo = marca && url && !falla;
+  return (
+    <div className="flex items-center gap-3">
+      {hayLogo && (
+        <img src={url} alt={marca} title={marca} style={{ height: 44, maxWidth: 160, objectFit: 'contain' }} onError={() => setFalla(true)} />
+      )}
+      <span className="text-xl font-black uppercase tracking-tight" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>{marca}</span>
+    </div>
+  );
 }
 
-// Celda de relleno: el logo grande de la marca en el hueco de la última fila.
-// Si no hay logo, muestra el nombre en grande. Ocupa una celda de la grilla.
-function LogoRelleno({ marca }) {
+// Celda de relleno con el logo grande de la marca. Ocupa las celdas vacías
+// que quedan en la última fila (huecoDesktop = cuántas columnas libres hay en
+// una grilla de 5). Cuanto más grande el hueco, más grande el logo.
+function LogoRelleno({ marca, huecoDesktop }) {
   const [falla, setFalla] = useState(false);
   const url = obtenerUrlLogoMarca(marca);
+  const span = Math.min(Math.max(huecoDesktop, 1), 5);
+  // Tamaño del logo según cuántas celdas ocupe
+  const maxH = span >= 4 ? 150 : span === 3 ? 130 : span === 2 ? 110 : 90;
   return (
-    <div className="flex items-center justify-center p-4 rounded-xl" style={{ backgroundColor: '#f8fafc' }}>
+    <div
+      className="flex items-center justify-center p-4 rounded-xl"
+      style={{ backgroundColor: '#f8fafc', gridColumn: `span ${span} / span ${span}` }}
+    >
       {(!marca || !url || falla)
-        ? <span className="text-lg font-black uppercase text-center opacity-40" style={{ color: COLORS.azul }}>{marca}</span>
-        : <img src={url} alt={marca} title={marca} style={{ maxHeight: 90, maxWidth: '85%', objectFit: 'contain', opacity: 0.9 }} onError={() => setFalla(true)} />
+        ? <span className="font-black uppercase text-center opacity-40" style={{ color: COLORS.azul, fontSize: span >= 3 ? 28 : 20 }}>{marca}</span>
+        : <img src={url} alt={marca} title={marca} style={{ maxHeight: maxH, maxWidth: '90%', objectFit: 'contain', opacity: 0.92 }} onError={() => setFalla(true)} />
       }
     </div>
   );
@@ -1719,8 +1731,12 @@ export default function App() {
                       );
                     })}
 
-                    {/* Celda de relleno con el logo grande de la marca */}
-                    <LogoRelleno marca={grupo.marca} />
+                    {/* Celda de relleno con el logo grande de la marca.
+                        hueco = columnas libres en la última fila (grilla de 5). */}
+                    <LogoRelleno marca={grupo.marca} huecoDesktop={(() => {
+                      const resto = grupo.items.length % 5;
+                      return resto === 0 ? 5 : 5 - resto;
+                    })()} />
                   </div>
                 </div>
               ));
