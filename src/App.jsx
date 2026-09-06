@@ -163,6 +163,32 @@ const detectarCategoriaEspecial = (descripcion, marca) => {
   return 'Otros';
 };
 
+// Banda separadora que va arriba de cada grupo de marca.
+// Muestra el logo si existe; si no, el nombre en grande.
+function BandaMarca({ marca }) {
+  const [falla, setFalla] = useState(false);
+  const url = obtenerUrlLogoMarca(marca);
+  if (!marca || !url || falla) {
+    return <span className="text-xl font-black uppercase tracking-tight" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>{marca}</span>;
+  }
+  return <img src={url} alt={marca} title={marca} style={{ height: 44, maxWidth: 200, objectFit: 'contain' }} onError={() => setFalla(true)} />;
+}
+
+// Celda de relleno: el logo grande de la marca en el hueco de la última fila.
+// Si no hay logo, muestra el nombre en grande. Ocupa una celda de la grilla.
+function LogoRelleno({ marca }) {
+  const [falla, setFalla] = useState(false);
+  const url = obtenerUrlLogoMarca(marca);
+  return (
+    <div className="flex items-center justify-center p-4 rounded-xl" style={{ backgroundColor: '#f8fafc' }}>
+      {(!marca || !url || falla)
+        ? <span className="text-lg font-black uppercase text-center opacity-40" style={{ color: COLORS.azul }}>{marca}</span>
+        : <img src={url} alt={marca} title={marca} style={{ maxHeight: 90, maxWidth: '85%', objectFit: 'contain', opacity: 0.9 }} onError={() => setFalla(true)} />
+      }
+    </div>
+  );
+}
+
 // Muestra el logo de la marca si existe en Cloudinary; si no, muestra el texto.
 // tamaño: 'chico' (desplegable) | 'tarjeta' (card de producto)
 // descripcion: opcional, para detectar sub-marcas de Arcor (Alka, Misky, etc.)
@@ -1593,93 +1619,112 @@ export default function App() {
             <p className="text-gray-500">No se encontraron productos</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {productosFiltrados.map(producto => {
-              const precioUnit = obtenerPrecioUnitario(producto);
-              const precioBult = obtenerPrecioBulto(producto);
-              const cantUnidad = carrito[claveCarrito(producto.id, 'unidad')]?.cantidad || 0;
-              const cantBulto = carrito[claveCarrito(producto.id, 'bulto')]?.cantidad || 0;
-              const modoActual = modoSeleccion[producto.id] || 'unidad';
-              const tieneBulto = producto.porBulto && producto.unidadesPorBulto > 1;
-              
-              return (
-                <div key={producto.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
-                  <div className="aspect-square overflow-hidden bg-gray-100 relative">
-                    <img
-                      src={producto.imagen}
-                      alt={producto.nombre}
-                      className="w-full h-full object-cover hover:scale-105 transition-transform"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = `https://via.placeholder.com/400/1e2a6e/ffffff?text=${encodeURIComponent(producto.nombre.substring(0, 30))}`;
-                      }}
-                    />
+          <div className="space-y-6">
+            {(() => {
+              // Agrupar productos por marca, manteniendo el orden alfabético que ya traen
+              const grupos = [];
+              const indice = {};
+              for (const p of productosFiltrados) {
+                const clave = p.marca || 'Otros';
+                if (indice[clave] === undefined) { indice[clave] = grupos.length; grupos.push({ marca: clave, items: [] }); }
+                grupos[indice[clave]].items.push(p);
+              }
+
+              return grupos.map(grupo => (
+                <div key={grupo.marca}>
+                  {/* Banda separadora de marca (logo si hay, o nombre en grande) */}
+                  <div className="flex items-center gap-3 mb-3 pb-2 border-b-2" style={{ borderColor: COLORS.azul }}>
+                    <BandaMarca marca={grupo.marca} />
+                    <span className="text-xs text-gray-400 ml-auto">{grupo.items.length} {grupo.items.length === 1 ? 'producto' : 'productos'}</span>
                   </div>
-                  <div className="p-3 flex-1 flex flex-col">
-                    <div className="h-11 flex items-center mb-1">
-                      <LogoMarca marca={producto.marca || producto.categoria} descripcion={producto.nombre} tamano="tarjeta" />
-                    </div>
-                    <h3 className="font-semibold text-gray-800 mt-1 mb-1 line-clamp-2 text-sm flex-1">{producto.nombre}</h3>
-                    <div className="text-xs text-gray-400 mb-2">Cód: {producto.codigo}</div>
 
-                    {/* Aviso de stock */}
-                    {producto.sinStock && (
-                      <div className="text-xs font-semibold text-red-600 mb-1">Sin stock</div>
-                    )}
+                  {/* Grilla de la marca */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    {grupo.items.map(producto => {
+                      const precioUnit = obtenerPrecioUnitario(producto);
+                      const cantUnidad = carrito[claveCarrito(producto.id, 'unidad')]?.cantidad || 0;
 
-                    {producto.sinPrecio ? (
-                      /* MODO PREVISUALIZACIÓN: sin precios */
-                      <div className="text-xs mb-2 leading-snug p-2 rounded-lg bg-blue-50 border border-blue-100" style={{ color: COLORS.azul }}>
-                        Date de alta como cliente en San-Ras para acceder a la lista de precios
-                      </div>
-                    ) : (
-                      <>
-                        {/* Precio principal (el de venta según la lista del cliente) */}
-                        <div className="text-lg font-black mb-1" style={{ color: COLORS.azul }}>
-                          {formatearPrecio(precioUnit)}
-                          {producto.soloBulto && (
-                            <span className="text-xs text-gray-500 font-normal"> / bulto</span>
-                          )}
-                        </div>
+                      return (
+                        <div key={producto.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+                          <div className="aspect-square overflow-hidden bg-gray-100 relative">
+                            <img
+                              src={producto.imagen}
+                              alt={producto.nombre}
+                              className="w-full h-full object-cover hover:scale-105 transition-transform"
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = `https://via.placeholder.com/400/1e2a6e/ffffff?text=${encodeURIComponent(producto.nombre.substring(0, 30))}`;
+                              }}
+                            />
+                          </div>
+                          <div className="p-3 flex-1 flex flex-col">
+                            <div className="h-11 flex items-center mb-1">
+                              <LogoMarca marca={producto.marca || producto.categoria} descripcion={producto.nombre} tamano="tarjeta" />
+                            </div>
+                            <h3 className="font-semibold text-gray-800 mt-1 mb-1 line-clamp-2 text-sm flex-1">{producto.nombre}</h3>
+                            <div className="text-xs text-gray-400 mb-2">Cód: {producto.codigo}</div>
 
-                        {/* Desglose de empaque calculado por el backend */}
-                        {producto.empaque && (
-                          <div className="text-xs mb-2 leading-snug">
-                            {producto.empaque.avisoFaltaDato ? (
-                              <span className="text-orange-600 font-semibold">⚠ Revisar</span>
+                            {producto.sinStock && (
+                              <div className="text-xs font-semibold text-red-600 mb-1">Sin stock</div>
+                            )}
+
+                            {producto.sinPrecio ? (
+                              <div className="text-xs mb-2 leading-snug p-2 rounded-lg bg-blue-50 border border-blue-100" style={{ color: COLORS.azul }}>
+                                Date de alta como cliente en San-Ras para acceder a la lista de precios
+                              </div>
                             ) : (
                               <>
-                                {producto.soloBulto ? (
-                                  <>
-                                    <div className="font-semibold" style={{ color: COLORS.azul }}>
-                                      {producto.empaque.mensajePrincipal}
-                                    </div>
-                                    {producto.empaque.mensajeReferencia && (
-                                      <div className="text-gray-500">{producto.empaque.mensajeReferencia}</div>
+                                <div className="text-lg font-black mb-1" style={{ color: COLORS.azul }}>
+                                  {formatearPrecio(precioUnit)}
+                                  {producto.soloBulto && (
+                                    <span className="text-xs text-gray-500 font-normal"> / bulto</span>
+                                  )}
+                                </div>
+
+                                {producto.empaque && (
+                                  <div className="text-xs mb-2 leading-snug">
+                                    {producto.empaque.avisoFaltaDato ? (
+                                      <span className="text-orange-600 font-semibold">⚠ Revisar</span>
+                                    ) : (
+                                      <>
+                                        {producto.soloBulto ? (
+                                          <>
+                                            <div className="font-semibold" style={{ color: COLORS.azul }}>
+                                              {producto.empaque.mensajePrincipal}
+                                            </div>
+                                            {producto.empaque.mensajeReferencia && (
+                                              <div className="text-gray-500">{producto.empaque.mensajeReferencia}</div>
+                                            )}
+                                          </>
+                                        ) : (
+                                          producto.empaque.mensajeReferencia && (
+                                            <div className="text-gray-500">{producto.empaque.mensajeReferencia}</div>
+                                          )
+                                        )}
+                                      </>
                                     )}
-                                  </>
-                                ) : (
-                                  producto.empaque.mensajeReferencia && (
-                                    <div className="text-gray-500">{producto.empaque.mensajeReferencia}</div>
-                                  )
+                                  </div>
                                 )}
+
+                                <ControlCantidad
+                                  producto={producto}
+                                  modoActual="unidad"
+                                  cantidadActual={cantUnidad}
+                                  onEstablecerCantidad={establecerCantidad}
+                                />
                               </>
                             )}
                           </div>
-                        )}
+                        </div>
+                      );
+                    })}
 
-                        <ControlCantidad
-                          producto={producto}
-                          modoActual="unidad"
-                          cantidadActual={cantUnidad}
-                          onEstablecerCantidad={establecerCantidad}
-                        />
-                      </>
-                    )}
+                    {/* Celda de relleno con el logo grande de la marca */}
+                    <LogoRelleno marca={grupo.marca} />
                   </div>
                 </div>
-              );
-            })}
+              ));
+            })()}
           </div>
         )}
       </main>
