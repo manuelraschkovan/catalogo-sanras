@@ -844,6 +844,30 @@ export default function App() {
       .catch(() => {});
   }, [usuario]);
 
+  // Genera los días válidos para retiro: próximos 30 días, sin hoy, sin
+  // domingos, sin feriados. (Es un hook: va ANTES de cualquier return.)
+  const diasRetiroValidos = useMemo(() => {
+    const dias = [];
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const nombresDia = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    for (let i = 1; i <= 30 && dias.length < 20; i++) {
+      const d = new Date(hoy);
+      d.setDate(hoy.getDate() + i);
+      const diaSemana = d.getDay();
+      if (diaSemana === 0) continue;
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (feriados.includes(iso)) continue;
+      const horario = diaSemana === 6 ? '8:30 a 11:30' : '7:30 a 15:30';
+      dias.push({
+        valor: iso,
+        etiqueta: `${nombresDia[diaSemana]} ${d.getDate()}/${d.getMonth() + 1}`,
+        horario
+      });
+    }
+    return dias;
+  }, [feriados]);
+
   const listaActual = usuario?.lista;
   const esConsumidor = usuario?.tipo === 'consumidor';
   const esPreview = usuario?.tipo === 'preview';
@@ -1230,30 +1254,6 @@ export default function App() {
     const logosMarcas = marcasParaLogos.map(obtenerUrlLogoMarca).filter(Boolean);
     return <PantallaCarga progreso={progresoCarga} logoUrl={LOGO_URL} logosMarcas={logosMarcas} />;
   }
-
-  // Genera los días válidos para retiro: próximos 30 días, sin hoy, sin
-  // domingos, sin feriados. Devuelve [{ valor:'YYYY-MM-DD', etiqueta:'Lun 8/9' }]
-  const diasRetiroValidos = useMemo(() => {
-    const dias = [];
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    const nombresDia = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    for (let i = 1; i <= 30 && dias.length < 20; i++) {
-      const d = new Date(hoy);
-      d.setDate(hoy.getDate() + i);
-      const diaSemana = d.getDay();           // 0 = domingo
-      if (diaSemana === 0) continue;           // sin domingos
-      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      if (feriados.includes(iso)) continue;    // sin feriados
-      const horario = diaSemana === 6 ? '8:30 a 11:30' : '7:30 a 15:30';
-      dias.push({
-        valor: iso,
-        etiqueta: `${nombresDia[diaSemana]} ${d.getDate()}/${d.getMonth() + 1}`,
-        horario
-      });
-    }
-    return dias;
-  }, [feriados]);
 
   // Formatea 'YYYY-MM-DD' a 'DD/MM/AAAA' para mostrar y mandar
   const formatearFecha = (iso) => {
