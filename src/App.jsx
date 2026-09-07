@@ -22,6 +22,15 @@ const LOGO_URL = 'https://res.cloudinary.com/dijfepcwx/image/upload/f_auto,q_aut
 //  (La de trycloudflare es temporal; con el dominio fijo se cambia acá.)
 const BACKEND_URL = 'https://backend.distribuidorasanras.com';
 
+// ============================================================
+//  GOOGLE PLACES — autocompletado de direcciones en el registro
+// ============================================================
+//  Pegá acá abajo, entre las comillas, la API key de Google que creaste
+//  en Google Cloud (la que restringiste a este catálogo + Places API New).
+//  Si la dejás vacía (''), el campo dirección funciona como siempre
+//  (input común, escrito a mano), sin autocompletado. Nada se rompe.
+const GOOGLE_MAPS_API_KEY = 'AIzaSyAtRYj78FfaaqTVgMmFs0I8QH1xQgd4rew';
+
 // Convierte un producto que viene del backend al formato que usa el catálogo.
 // El backend manda: { codigo, descripcion, marca, precio, stock, sinStock, porBulto }
 // Ojo: el backend ya manda SOLO el precio de la lista del cliente (más seguro),
@@ -405,6 +414,74 @@ function ControlCantidad({ producto, modoActual, cantidadActual, onAgregar, onEs
 }
 
 // ============ PANTALLA DE LOGIN ============
+// --- Google Places: carga del script (una sola vez para toda la página) ---
+// Devuelve una promesa que se resuelve cuando la librería 'places' está lista.
+let _googleMapsPromise = null;
+function cargarGoogleMaps() {
+  if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error('sin_api_key'));
+  // Ya cargado y listo
+  if (typeof window !== 'undefined' && window.google && window.google.maps && window.google.maps.places) {
+    return Promise.resolve(window.google.maps);
+  }
+  // Ya se está cargando: devolver la misma promesa
+  if (_googleMapsPromise) return _googleMapsPromise;
+
+  _googleMapsPromise = new Promise((resolve, reject) => {
+    try {
+      const existente = document.getElementById('google-maps-script');
+      const alListo = () => {
+        // Aseguramos que la librería places esté disponible
+        if (window.google && window.google.maps && window.google.maps.importLibrary) {
+          window.google.maps.importLibrary('places')
+            .then(() => resolve(window.google.maps))
+            .catch(reject);
+        } else if (window.google && window.google.maps && window.google.maps.places) {
+          resolve(window.google.maps);
+        } else {
+          reject(new Error('google_no_disponible'));
+        }
+      };
+      if (existente) { existente.addEventListener('load', alListo); return; }
+
+      const s = document.createElement('script');
+      s.id = 'google-maps-script';
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&language=es&region=AR&loading=async`;
+      s.async = true;
+      s.defer = true;
+      s.onload = alListo;
+      s.onerror = () => reject(new Error('error_carga_google'));
+      document.head.appendChild(s);
+    } catch (e) { reject(e); }
+  });
+  return _googleMapsPromise;
+}
+
+// Saca acentos y pasa a minúsculas, para comparar nombres de provincia.
+function _normalizar(txt) {
+  return (txt || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/provincia de /g, '')
+    .trim();
+}
+
+// Convierte el nombre de provincia que da Google al nombre EXACTO de PROVINCIAS_AR.
+// Si no encuentra coincidencia, devuelve '' (el cliente la elige a mano).
+function matchProvincia(nombreGoogle) {
+  const n = _normalizar(nombreGoogle);
+  if (!n) return '';
+  // Casos especiales / alias que Google usa distinto a nuestra lista
+  const alias = {
+    'ciudad autonoma de buenos aires': 'CABA',
+    'buenos aires f.d.': 'CABA',
+    'capital federal': 'CABA',
+    'tierra del fuego, antartida e islas del atlantico sur': 'Tierra del Fuego',
+  };
+  if (alias[n]) return alias[n];
+  const encontrada = PROVINCIAS_AR.find(p => _normalizar(p) === n);
+  return encontrada || '';
+}
+
 const PROVINCIAS_AR = [
   'Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes',
   'Entre Ríos', 'Formosa', 'Jujuy', 'La Pampa', 'La Rioja', 'Mendoza', 'Misiones',
@@ -424,8 +501,57 @@ function PantallaLogin({ onLogin }) {
   const [localidad, setLocalidad] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  // Autocompletado de dirección (Google Places). Si no carga, se usa input común.
+  const direccionInputRef = useRef(null);
+  const autocompleteRef = useRef(null);
+  const [googleListo, setGoogleListo] = useState(false);
 
-  const limpiar = () => { setError(''); setPassword(''); setPassword2(''); setCuit(''); setDireccion(''); setProvincia(''); setLocalidad(''); };
+  // Arma el autocompletado de Google en el campo dirección cuando se entra a "registro".
+  useEffect(() => {
+    if (modo !== 'registro') return;
+    if (!GOOGLE_MAPS_API_KEY) return;
+    let cancelado = false;
+
+    cargarGoogleMaps().then((maps) => {
+      if (cancelado || !direccionInputRef.current) return;
+      // Evitar armarlo dos veces sobre el mismo input
+      if (autocompleteRef.current) { setGoogleListo(true); return; }
+      try {
+        const ac = new maps.places.Autocomplete(direccionInputRef.current, {
+          componentRestrictions: { country: 'ar' },   // solo Argentina
+          fields: ['address_components', 'formatted_address'],
+          types: ['address'],
+        });
+        autocompleteRef.current = ac;
+        ac.addListener('place_changed', () => {
+          const place = ac.getPlace();
+          if (!place || !place.address_components) return;
+          let calle = '', numero = '', loc = '', prov = '';
+          for (const comp of place.address_components) {
+            const t = comp.types;
+            if (t.includes('route')) calle = comp.long_name;
+            else if (t.includes('street_number')) numero = comp.long_name;
+            else if (t.includes('locality')) loc = comp.long_name;
+            else if (!loc && t.includes('administrative_area_level_2')) loc = comp.long_name;
+            else if (t.includes('administrative_area_level_1')) prov = comp.long_name;
+          }
+          const dir = [calle, numero].filter(Boolean).join(' ').trim();
+          if (dir) setDireccion(dir);
+          else if (place.formatted_address) setDireccion(place.formatted_address);
+          if (loc) setLocalidad(loc);
+          const provMatch = matchProvincia(prov);
+          if (provMatch) setProvincia(provMatch);
+        });
+        setGoogleListo(true);
+      } catch (e) {
+        setGoogleListo(false);
+      }
+    }).catch(() => { if (!cancelado) setGoogleListo(false); });
+
+    return () => { cancelado = true; };
+  }, [modo]);
+
+  const limpiar = () => { setError(''); setPassword(''); setPassword2(''); setCuit(''); setDireccion(''); setProvincia(''); setLocalidad(''); if (autocompleteRef.current) { autocompleteRef.current = null; } };
 
   // --- LOGIN (código + contraseña) ---
   const hacerLogin = async () => {
@@ -600,7 +726,10 @@ function PantallaLogin({ onLogin }) {
             {modo === 'registro' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dirección de tu comercio</label>
-                <input type="text" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle y número" className={inputCls} />
+                <input ref={direccionInputRef} type="text" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Empezá a escribir la calle…" className={inputCls} autoComplete="off" />
+                {googleListo && (
+                  <p className="text-xs text-gray-400 mt-1">Elegí tu dirección de la lista que aparece.</p>
+                )}
               </div>
             )}
             <div>
