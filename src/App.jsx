@@ -417,40 +417,53 @@ function ControlCantidad({ producto, modoActual, cantidadActual, onAgregar, onEs
 // --- Google Places: carga del script (una sola vez para toda la página) ---
 // Devuelve una promesa que se resuelve cuando la librería 'places' está lista.
 let _googleMapsPromise = null;
+
+// Instala el "bootstrap loader" oficial de Google (deja disponible
+// window.google.maps.importLibrary). Es el método vigente; el script
+// viejo (maps/api/js?libraries=places) daba 404. Se instala una sola vez.
+function _instalarBootstrapGoogle() {
+  if (window.google && window.google.maps && window.google.maps.importLibrary) return;
+  ((g) => {
+    let h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__",
+      m = document, b = window;
+    b = b[c] || (b[c] = {});
+    const d = b.maps || (b.maps = {}), r = new Set(), e = new URLSearchParams(),
+      u = () => h || (h = new Promise(async (f, n) => {
+        await (a = m.createElement("script"));
+        e.set("libraries", [...r] + "");
+        for (k in g) e.set(k.replace(/[A-Z]/g, (t) => "_" + t[0].toLowerCase()), g[k]);
+        e.set("callback", c + ".maps." + q);
+        a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+        d[q] = f;
+        a.onerror = () => (h = n(Error(p + " could not load.")));
+        a.nonce = m.querySelector("script[nonce]")?.nonce || "";
+        m.head.append(a);
+      }));
+    d[l] ? console.warn(p + " only loads once. Ignoring:", g) : (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
+  })({
+    key: GOOGLE_MAPS_API_KEY,
+    v: "weekly",
+    language: "es",
+    region: "AR",
+  });
+}
+
+// Devuelve una promesa que se resuelve cuando la librería 'places' está lista.
 function cargarGoogleMaps() {
   if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error('sin_api_key'));
+  if (typeof window === 'undefined') return Promise.reject(new Error('sin_window'));
   // Ya cargado y listo
-  if (typeof window !== 'undefined' && window.google && window.google.maps && window.google.maps.places) {
+  if (window.google && window.google.maps && window.google.maps.places && window.google.maps.places.Autocomplete) {
     return Promise.resolve(window.google.maps);
   }
-  // Ya se está cargando: devolver la misma promesa
   if (_googleMapsPromise) return _googleMapsPromise;
 
   _googleMapsPromise = new Promise((resolve, reject) => {
     try {
-      const existente = document.getElementById('google-maps-script');
-      const alListo = () => {
-        // Aseguramos que la librería places esté disponible
-        if (window.google && window.google.maps && window.google.maps.importLibrary) {
-          window.google.maps.importLibrary('places')
-            .then(() => resolve(window.google.maps))
-            .catch(reject);
-        } else if (window.google && window.google.maps && window.google.maps.places) {
-          resolve(window.google.maps);
-        } else {
-          reject(new Error('google_no_disponible'));
-        }
-      };
-      if (existente) { existente.addEventListener('load', alListo); return; }
-
-      const s = document.createElement('script');
-      s.id = 'google-maps-script';
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&language=es&region=AR&loading=async`;
-      s.async = true;
-      s.defer = true;
-      s.onload = alListo;
-      s.onerror = () => reject(new Error('error_carga_google'));
-      document.head.appendChild(s);
+      _instalarBootstrapGoogle();
+      window.google.maps.importLibrary('places')
+        .then(() => resolve(window.google.maps))
+        .catch(reject);
     } catch (e) { reject(e); }
   });
   return _googleMapsPromise;
