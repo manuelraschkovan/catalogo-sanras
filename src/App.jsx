@@ -518,6 +518,9 @@ function PantallaLogin({ onLogin }) {
   const direccionInputRef = useRef(null);
   const autocompleteRef = useRef(null);
   const [googleListo, setGoogleListo] = useState(false);
+  // Carga manual: si el cliente no encuentra su dirección en el autocompletado,
+  // desbloquea provincia (desplegable) + localidad + dirección para escribir a mano.
+  const [modoManual, setModoManual] = useState(false);
 
   // Arma el autocompletado de Google en el campo dirección cuando se entra a "registro".
   useEffect(() => {
@@ -553,7 +556,13 @@ function PantallaLogin({ onLogin }) {
           else if (place.formatted_address) setDireccion(place.formatted_address);
           if (loc) setLocalidad(loc);
           const provMatch = matchProvincia(prov);
-          if (provMatch) setProvincia(provMatch);
+          if (provMatch) {
+            setProvincia(provMatch);
+          } else {
+            // Google no devolvió una provincia que coincida con nuestra lista:
+            // desbloqueamos para que el cliente la elija a mano y no quede trabado.
+            setModoManual(true);
+          }
         });
         setGoogleListo(true);
       } catch (e) {
@@ -564,7 +573,7 @@ function PantallaLogin({ onLogin }) {
     return () => { cancelado = true; };
   }, [modo]);
 
-  const limpiar = () => { setError(''); setPassword(''); setPassword2(''); setCuit(''); setDireccion(''); setProvincia(''); setLocalidad(''); if (autocompleteRef.current) { autocompleteRef.current = null; } };
+  const limpiar = () => { setError(''); setPassword(''); setPassword2(''); setCuit(''); setDireccion(''); setProvincia(''); setLocalidad(''); setModoManual(false); if (autocompleteRef.current) { autocompleteRef.current = null; } };
 
   // --- LOGIN (código + contraseña) ---
   const hacerLogin = async () => {
@@ -595,6 +604,12 @@ function PantallaLogin({ onLogin }) {
     setError('');
     if (!codigo.trim() || !cuit.trim()) { setError('Completá tu código de cliente y CUIT.'); return; }
     if (modo === 'registro') {
+      // Con autocompletado activo (y sin carga manual), provincia y localidad
+      // solo se llenan eligiendo una dirección de la lista de Google.
+      if (googleListo && !modoManual && (!provincia.trim() || !localidad.trim())) {
+        setError('Elegí tu dirección de la lista. Si no aparece, tocá "No encuentro mi dirección".');
+        return;
+      }
       if (!provincia.trim()) { setError('Elegí tu provincia.'); return; }
       if (!localidad.trim()) { setError('Ingresá tu localidad.'); return; }
       if (!direccion.trim()) { setError('Ingresá la dirección de tu comercio.'); return; }
@@ -724,8 +739,13 @@ function PantallaLogin({ onLogin }) {
             {modo === 'registro' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Provincia</label>
-                <select value={provincia} onChange={(e) => setProvincia(e.target.value)} className={inputCls}>
-                  <option value="">Elegí tu provincia…</option>
+                <select
+                  value={provincia}
+                  onChange={(e) => setProvincia(e.target.value)}
+                  disabled={googleListo && !modoManual}
+                  className={inputCls + ((googleListo && !modoManual) ? ' bg-gray-100 text-gray-500 cursor-not-allowed' : '')}
+                >
+                  <option value="">{(googleListo && !modoManual) ? 'Se completa con la dirección' : 'Elegí tu provincia…'}</option>
                   {PROVINCIAS_AR.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
@@ -733,15 +753,43 @@ function PantallaLogin({ onLogin }) {
             {modo === 'registro' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Localidad</label>
-                <input type="text" value={localidad} onChange={(e) => setLocalidad(e.target.value)} placeholder="Ej: Bahía Blanca" className={inputCls} />
+                <input
+                  type="text"
+                  value={localidad}
+                  onChange={(e) => setLocalidad(e.target.value)}
+                  readOnly={googleListo && !modoManual}
+                  placeholder={(googleListo && !modoManual) ? 'Se completa con la dirección' : 'Ej: Bahía Blanca'}
+                  className={inputCls + ((googleListo && !modoManual) ? ' bg-gray-100 text-gray-500 cursor-not-allowed' : '')}
+                />
               </div>
             )}
             {modo === 'registro' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dirección de tu comercio</label>
-                <input ref={direccionInputRef} type="text" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Empezá a escribir la calle…" className={inputCls} autoComplete="off" />
-                {googleListo && (
-                  <p className="text-xs text-gray-400 mt-1">Elegí tu dirección de la lista que aparece.</p>
+                <input ref={direccionInputRef} type="text" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder={modoManual ? 'Calle y número' : 'Empezá a escribir la calle…'} className={inputCls} autoComplete="off" />
+                {googleListo && !modoManual && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Elegí tu dirección de la lista.{' '}
+                    <button
+                      type="button"
+                      onClick={() => { setModoManual(true); setProvincia(''); setLocalidad(''); setDireccion(''); if (autocompleteRef.current) { autocompleteRef.current = null; } }}
+                      className="text-blue-600 hover:underline"
+                    >
+                      No encuentro mi dirección
+                    </button>
+                  </p>
+                )}
+                {googleListo && modoManual && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Cargando a mano.{' '}
+                    <button
+                      type="button"
+                      onClick={() => { setModoManual(false); setProvincia(''); setLocalidad(''); setDireccion(''); }}
+                      className="text-blue-600 hover:underline"
+                    >
+                      Volver al buscador
+                    </button>
+                  </p>
                 )}
               </div>
             )}
