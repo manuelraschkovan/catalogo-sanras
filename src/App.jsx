@@ -1048,6 +1048,297 @@ function CalendarioRetiro({ feriados, seleccionado, onSeleccionar }) {
 }
 
 // ============ APP PRINCIPAL ============
+// ============================================================
+//  MÓDULO REVENDEDOR — R1: cartera de clientes
+// ============================================================
+function ModuloRevendedor({ usuario, onCerrar }) {
+  const [seccion, setSeccion] = useState('menu');   // 'menu' | 'clientes'
+  const [clientes, setClientes] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  // Formulario (alta/edición)
+  const [editando, setEditando] = useState(null);   // null = alta; objeto = edición
+  const [fNombre, setFNombre] = useState('');
+  const [fProvincia, setFProvincia] = useState('');
+  const [fLocalidad, setFLocalidad] = useState('');
+  const [fDireccion, setFDireccion] = useState('');
+  const [fTelefono, setFTelefono] = useState('');
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+
+  // Autocompletado de localidad (Georef vía backend)
+  const [sugerencias, setSugerencias] = useState([]);
+  const [buscandoLoc, setBuscandoLoc] = useState(false);
+  const debounceRef = useRef(null);
+
+  const [confirmarBorrar, setConfirmarBorrar] = useState(null); // cliente a borrar
+
+  // Cargar la cartera al entrar a la sección "clientes"
+  useEffect(() => {
+    if (seccion !== 'clientes') return;
+    cargarClientes();
+    // eslint-disable-next-line
+  }, [seccion]);
+
+  async function cargarClientes() {
+    setCargando(true); setError('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/revendedor/clientes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token })
+      });
+      const data = await r.json();
+      if (data.ok) setClientes(data.clientes || []);
+      else setError(data.motivo || 'No se pudieron cargar tus clientes.');
+    } catch (e) {
+      setError('No se pudo conectar. Revisá tu internet.');
+    } finally { setCargando(false); }
+  }
+
+  // Buscar localidades cuando el revendedor escribe (con provincia elegida)
+  function onCambioLocalidad(texto) {
+    setFLocalidad(texto);
+    setSugerencias([]);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!fProvincia || texto.trim().length < 2) return;
+    debounceRef.current = setTimeout(async () => {
+      setBuscandoLoc(true);
+      try {
+        const url = `${BACKEND_URL}/api/localidades?provincia=${encodeURIComponent(fProvincia)}&q=${encodeURIComponent(texto.trim())}`;
+        const r = await fetch(url);
+        const data = await r.json();
+        setSugerencias(data.localidades || []);
+      } catch (e) { setSugerencias([]); }
+      finally { setBuscandoLoc(false); }
+    }, 300);
+  }
+
+  function abrirAlta() {
+    setEditando(null);
+    setFNombre(''); setFProvincia(''); setFLocalidad(''); setFDireccion(''); setFTelefono('');
+    setSugerencias([]); setError(''); setMostrarForm(true);
+  }
+
+  function abrirEdicion(c) {
+    setEditando(c);
+    setFNombre(c.nombre || ''); setFProvincia(c.provincia || '');
+    setFLocalidad(c.localidad || ''); setFDireccion(c.direccion || '');
+    setFTelefono(c.telefono || '');
+    setSugerencias([]); setError(''); setMostrarForm(true);
+  }
+
+  async function guardarCliente() {
+    setError('');
+    if (!fNombre.trim())    { setError('El nombre es obligatorio.'); return; }
+    if (!fProvincia.trim()) { setError('Elegí la provincia.'); return; }
+    if (!fLocalidad.trim()) { setError('Ingresá la localidad.'); return; }
+    if (!fDireccion.trim()) { setError('Ingresá la dirección.'); return; }
+    setGuardando(true);
+    try {
+      const esEdicion = !!editando;
+      const url = esEdicion
+        ? `${BACKEND_URL}/api/revendedor/clientes/editar`
+        : `${BACKEND_URL}/api/revendedor/clientes/crear`;
+      const cuerpo = {
+        token: usuario.token,
+        nombre: fNombre.trim(), provincia: fProvincia.trim(),
+        localidad: fLocalidad.trim(), direccion: fDireccion.trim(),
+        telefono: fTelefono.trim()
+      };
+      if (esEdicion) cuerpo.id = editando.id;
+      const r = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo)
+      });
+      const data = await r.json();
+      if (data.ok) { setMostrarForm(false); cargarClientes(); }
+      else setError(data.motivo || 'No se pudo guardar.');
+    } catch (e) {
+      setError('No se pudo conectar. Revisá tu internet.');
+    } finally { setGuardando(false); }
+  }
+
+  async function borrarCliente(c) {
+    setConfirmarBorrar(null);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/revendedor/clientes/borrar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token, id: c.id })
+      });
+      const data = await r.json();
+      if (data.ok) cargarClientes();
+      else setError(data.motivo || 'No se pudo borrar.');
+    } catch (e) { setError('No se pudo conectar.'); }
+  }
+
+  const inputCls = "w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col">
+        {/* Encabezado */}
+        <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
+          <h2 className="text-xl font-black flex items-center gap-2" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>
+            <Users className="w-5 h-5" />
+            {seccion === 'menu' ? 'MÓDULO REVENDEDOR' : 'MIS CLIENTES'}
+          </h2>
+          <button onClick={onCerrar}><X className="w-6 h-6" /></button>
+        </div>
+
+        {/* MENÚ del módulo */}
+        {seccion === 'menu' && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <p className="text-sm text-gray-500 mb-2">Elegí qué querés hacer:</p>
+            <button onClick={() => setSeccion('clientes')}
+              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 hover:bg-gray-50 transition-colors text-left"
+              style={{ borderColor: COLORS.azul }}>
+              <Users className="w-6 h-6" style={{ color: COLORS.azul }} />
+              <div>
+                <div className="font-bold" style={{ color: COLORS.azul }}>Mis clientes</div>
+                <div className="text-xs text-gray-500">Cargá y administrá tu cartera de clientes</div>
+              </div>
+            </button>
+            {[
+              ['Levantar pedido', 'Tomá pedidos a tus clientes con tu precio'],
+              ['Consolidado y pedido a San-Ras', 'Juntá los pedidos y enviálos'],
+              ['Márgenes', 'Definí tus ganancias por producto o marca'],
+            ].map(([t, d]) => (
+              <div key={t} className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 opacity-60 text-left">
+                <Package className="w-6 h-6 text-gray-400" />
+                <div>
+                  <div className="font-bold text-gray-500">{t}</div>
+                  <div className="text-xs text-gray-400">{d}</div>
+                </div>
+                <span className="ml-auto text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Próximamente</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* SECCIÓN clientes */}
+        {seccion === 'clientes' && (
+          <>
+            <div className="flex items-center gap-2 p-3 border-b">
+              <button onClick={() => setSeccion('menu')} className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
+                <ChevronLeft className="w-4 h-4" /> Volver
+              </button>
+              <button onClick={abrirAlta} className="ml-auto flex items-center gap-1 text-white text-sm font-bold px-3 py-2 rounded-lg" style={{ backgroundColor: COLORS.azul }}>
+                <Plus className="w-4 h-4" /> Agregar cliente
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {error && <div className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+              {cargando ? (
+                <div className="text-center py-12 text-gray-500">Cargando tus clientes…</div>
+              ) : clientes.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">Todavía no cargaste clientes</p>
+                  <p className="text-gray-400 text-sm mt-1">Tocá "Agregar cliente" para empezar.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {clientes.map(c => (
+                    <div key={c.id} className="border rounded-lg p-3 flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-gray-900">{c.nombre}</div>
+                        <div className="text-sm text-gray-600">{c.localidad}{c.provincia ? `, ${c.provincia}` : ''}</div>
+                        <div className="text-sm text-gray-500">{c.direccion}</div>
+                        {c.telefono && <div className="text-sm text-gray-500">Tel: {c.telefono}</div>}
+                      </div>
+                      <button onClick={() => abrirEdicion(c)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setConfirmarBorrar(c)} className="p-2 text-gray-500 hover:text-red-600" title="Borrar">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-center text-xs text-gray-400 pt-2">{clientes.length} cliente{clientes.length !== 1 ? 's' : ''}</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Formulario alta/edición (modal encima) */}
+      {mostrarForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !guardando && setMostrarForm(false)}>
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
+              <h3 className="font-black" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>
+                {editando ? 'EDITAR CLIENTE' : 'NUEVO CLIENTE'}
+              </h3>
+              <button onClick={() => !guardando && setMostrarForm(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre <span className="text-red-500">*</span></label>
+                <input type="text" value={fNombre} onChange={e => setFNombre(e.target.value)} placeholder="Nombre del cliente" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Provincia <span className="text-red-500">*</span></label>
+                <select value={fProvincia} onChange={e => { setFProvincia(e.target.value); setFLocalidad(''); setSugerencias([]); }} className={inputCls}>
+                  <option value="">Elegí la provincia…</option>
+                  {PROVINCIAS_AR.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Localidad <span className="text-red-500">*</span></label>
+                <input type="text" value={fLocalidad} onChange={e => onCambioLocalidad(e.target.value)}
+                  disabled={!fProvincia}
+                  placeholder={fProvincia ? 'Empezá a escribir…' : 'Elegí primero la provincia'}
+                  className={inputCls + (!fProvincia ? ' bg-gray-100 text-gray-400' : '')} autoComplete="off" />
+                {buscandoLoc && <div className="text-xs text-gray-400 mt-1">Buscando…</div>}
+                {sugerencias.length > 0 && (
+                  <div className="absolute z-10 left-0 right-0 bg-white border rounded-lg mt-1 shadow-lg max-h-48 overflow-y-auto">
+                    {sugerencias.map((s, i) => (
+                      <button key={i} onClick={() => { setFLocalidad(s); setSugerencias([]); }}
+                        className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-sm">{s}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección <span className="text-red-500">*</span></label>
+                <input type="text" value={fDireccion} onChange={e => setFDireccion(e.target.value)} placeholder="Calle y número" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono <span className="text-gray-400">(opcional)</span></label>
+                <input type="text" value={fTelefono} onChange={e => setFTelefono(e.target.value)} placeholder="Teléfono de contacto" className={inputCls} />
+              </div>
+            </div>
+            <div className="p-4 border-t flex gap-2">
+              <button onClick={() => setMostrarForm(false)} disabled={guardando} className="flex-1 py-3 rounded-lg border border-gray-300 font-bold text-gray-700 hover:bg-gray-50">Cancelar</button>
+              <button onClick={guardarCliente} disabled={guardando} className="flex-1 py-3 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>
+                {guardando ? 'Guardando…' : (editando ? 'Guardar cambios' : 'Agregar')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmación de borrado */}
+      {confirmarBorrar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full p-5">
+            <p className="font-bold text-gray-900 mb-1">¿Borrar este cliente?</p>
+            <p className="text-sm text-gray-600 mb-4">{confirmarBorrar.nombre} — {confirmarBorrar.localidad}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmarBorrar(null)} className="flex-1 py-2 rounded-lg border border-gray-300 font-bold text-gray-700 hover:bg-gray-50">No</button>
+              <button onClick={() => borrarCliente(confirmarBorrar)} className="flex-1 py-2 rounded-lg font-bold text-white bg-red-600 hover:bg-red-700">Sí, borrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [productos, setProductos] = useState([]);
@@ -1069,6 +1360,7 @@ export default function App() {
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const [mostrarAdmin, setMostrarAdmin] = useState(false);
   const [mostrarMisPedidos, setMostrarMisPedidos] = useState(false);
+  const [mostrarRevendedor, setMostrarRevendedor] = useState(false);
   const [misPedidos, setMisPedidos] = useState([]);
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [pedidoExpandido, setPedidoExpandido] = useState(null);
@@ -1670,6 +1962,11 @@ export default function App() {
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{cantidadItemsCarrito}</span>
                 )}
               </button>
+              {usuario && usuario.lista === 5 && (
+                <button onClick={() => setMostrarRevendedor(true)} title="Módulo Revendedor" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
+                  <Users className="w-5 h-5" />
+                </button>
+              )}
               <button onClick={abrirMisPedidos} title="Mis pedidos" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
                 <Package className="w-5 h-5" />
               </button>
@@ -2055,6 +2352,10 @@ export default function App() {
       )}
 
       {/* Mis pedidos (histórico) */}
+      {mostrarRevendedor && usuario && usuario.lista === 5 && (
+        <ModuloRevendedor usuario={usuario} onCerrar={() => setMostrarRevendedor(false)} />
+      )}
+
       {mostrarMisPedidos && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col">
