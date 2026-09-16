@@ -828,6 +828,23 @@ function PantallaLogin({ onLogin }) {
 function PantallaCarga({ progreso, logoUrl, logosMarcas }) {
   const pct = Math.min(Math.max(progreso, 0), 100);
 
+  // Frases que van rotando mientras carga (dan sensación de trabajo real).
+  const FRASES = [
+    'Preparando tu pedido…',
+    'Verificando lista de precios…',
+    'Calculando el stock actual…',
+    'Actualizando el catálogo…',
+    'Ordenando los productos…',
+    'Casi listo…'
+  ];
+  const [fraseIdx, setFraseIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => {
+      setFraseIdx(i => (i + 1) % FRASES.length);
+    }, 1600);
+    return () => clearInterval(t);
+  }, []);
+
   const IMG_GALPON   = 'https://res.cloudinary.com/dijfepcwx/image/upload/e_background_removal/v1786811789/Galpon_animado_distribuidora.png';
   const IMG_COMERCIO = 'https://res.cloudinary.com/dijfepcwx/image/upload/e_background_removal/v1786811792/Comercio_animado.png';
   const IMG_CAMION   = 'https://res.cloudinary.com/dijfepcwx/image/upload/v1786823128/Logo_camioneta_no_fon_dp.png';
@@ -866,8 +883,8 @@ function PantallaCarga({ progreso, logoUrl, logosMarcas }) {
         <img src={logoUrl} alt="Distribuidora San-Ras"
           style={{ width: 138, maxWidth: '48%', borderRadius: 18, marginBottom: 18, boxShadow: '0 10px 34px rgba(10,42,94,0.22)' }} />
 
-        <div style={{ color: '#0a2a5e', fontSize: 19, fontWeight: 800, letterSpacing: 0.2, marginBottom: 30 }}>
-          Preparando tu pedido…
+        <div style={{ color: '#0a2a5e', fontSize: 19, fontWeight: 800, letterSpacing: 0.2, marginBottom: 30, minHeight: 26, transition: 'opacity 0.3s' }}>
+          {FRASES[fraseIdx]}
         </div>
 
         {/* Escena */}
@@ -1411,6 +1428,10 @@ export default function App() {
     setCargandoBackend(true);
     setErrorBackend('');
     setProgresoCarga(10);
+    // Volvemos a mostrar la pantalla de carga completa (camioncito) hasta que
+    // lleguen los datos frescos. Sin esto, al pasar de previsualización a login
+    // real se veía el catálogo viejo con un cartelito chico actualizando precios.
+    setYaSincronizo(false);
 
     const intervalo = setInterval(() => {
       setProgresoCarga(p => (p < 90 ? p + Math.random() * 8 : p));
@@ -2478,112 +2499,116 @@ export default function App() {
                       </div>
                     );
                   })}
+
+                  {/* Configuración del pedido (dentro del scroll para que en celu se pueda deslizar) */}
+                  <div className="border-t pt-3 space-y-3">
+                    {/* Selector de modalidad de entrega (solo si el cliente puede elegir) */}
+                    {puedeElegirEnvio && (
+                      <div>
+                        <p className="text-sm font-bold mb-2" style={{ color: COLORS.azul }}>¿Cómo querés recibirlo?</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => setModalidadEntrega('retiro')}
+                            className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${modalidadEntrega === 'retiro' ? 'text-white' : 'bg-white'}`}
+                            style={modalidadEntrega === 'retiro' 
+                              ? { backgroundColor: COLORS.azul, borderColor: COLORS.azul }
+                              : { borderColor: COLORS.azul, color: COLORS.azul }}
+                          >
+                            <Home className="w-4 h-4 inline mr-1" />
+                            Retiro en local
+                            {listaActual === 2 && <div className="text-xs font-normal mt-0.5">5% descuento</div>}
+                          </button>
+                          <button
+                            onClick={() => setModalidadEntrega('envio')}
+                            className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${modalidadEntrega === 'envio' ? 'text-white' : 'bg-white'}`}
+                            style={modalidadEntrega === 'envio' 
+                              ? { backgroundColor: COLORS.azul, borderColor: COLORS.azul }
+                              : { borderColor: COLORS.azul, color: COLORS.azul }}
+                          >
+                            <Truck className="w-4 h-4 inline mr-1" />
+                            Envío a domicilio
+                            <div className="text-xs font-normal mt-0.5">Sin costo</div>
+                          </button>
+                        </div>
+                        {listaActual === 2 && modalidadEntrega === 'envio' && (
+                          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                            ⚠️ El 5% de descuento no aplica con envío a domicilio.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Calendario de retiro (cuando la entrega es retiro) */}
+                    {(!puedeElegirEnvio || modalidadEntrega === 'retiro') && (
+                      <div>
+                        <p className="text-sm font-bold mb-1" style={{ color: COLORS.azul }}>
+                          <Home className="w-4 h-4 inline mr-1" />¿Qué día retirás?
+                        </p>
+                        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+                          Demora mínima de 24hs. Para casos excepcionales, comunicate al{' '}
+                          <a href={`https://wa.me/${WHATSAPP_DISTRIBUIDORA}`} target="_blank" rel="noopener noreferrer" className="font-bold underline">
+                            {TELEFONO_DISTRIBUIDORA_VISIBLE}
+                          </a>.
+                        </div>
+                        <CalendarioRetiro
+                          feriados={feriados}
+                          seleccionado={diaRetiro}
+                          onSeleccionar={setDiaRetiro}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                          Lun a Vie 7:30–15:30 · Sáb 8:30–11:30 · Dom cerrado
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Observaciones del pedido */}
+                    <div>
+                      <p className="text-sm font-bold mb-1" style={{ color: COLORS.azul }}>Observaciones (opcional)</p>
+                      <textarea
+                        value={observacionesPedido}
+                        onChange={(e) => setObservacionesPedido(e.target.value)}
+                        placeholder="Ej: mandar factura A, entregar en horario de la tarde, etc."
+                        rows={2}
+                        className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-600 text-sm resize-none"
+                      />
+                    </div>
+
+                    <div className="flex justify-between text-sm">
+                      <span>Subtotal:</span>
+                      <span className="font-semibold">{formatearPrecio(subtotalCarrito)}</span>
+                    </div>
+                    {tieneDescuento && (
+                      <div className="flex justify-between text-sm text-green-700">
+                        <span>Descuento 5% (retiro):</span>
+                        <span className="font-semibold">-{formatearPrecio(descuento)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-lg font-black pt-2 border-t">
+                      <span>TOTAL:</span>
+                      <span style={{ color: COLORS.azul }}>{formatearPrecio(totalCarrito)}</span>
+                    </div>
+
+                    {esConsumidor && !cumpleMinimo && (
+                      <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm p-3 rounded-lg flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div>Falta <strong>{formatearPrecio(MINIMO_CONSUMIDOR_FINAL - subtotalCarrito)}</strong> para llegar al mínimo de compra.</div>
+                      </div>
+                    )}
+
+                    {pedidoError && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div>{pedidoError}</div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* Pie fijo: solo el botón de enviar, siempre visible y accesible */}
             {Object.keys(carrito).length > 0 && (
-              <div className="border-t p-4 space-y-3">
-                {/* Selector de modalidad de entrega (solo si el cliente puede elegir) */}
-                {puedeElegirEnvio && (
-                  <div>
-                    <p className="text-sm font-bold mb-2" style={{ color: COLORS.azul }}>¿Cómo querés recibirlo?</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setModalidadEntrega('retiro')}
-                        className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${modalidadEntrega === 'retiro' ? 'text-white' : 'bg-white'}`}
-                        style={modalidadEntrega === 'retiro' 
-                          ? { backgroundColor: COLORS.azul, borderColor: COLORS.azul }
-                          : { borderColor: COLORS.azul, color: COLORS.azul }}
-                      >
-                        <Home className="w-4 h-4 inline mr-1" />
-                        Retiro en local
-                        {listaActual === 2 && <div className="text-xs font-normal mt-0.5">5% descuento</div>}
-                      </button>
-                      <button
-                        onClick={() => setModalidadEntrega('envio')}
-                        className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${modalidadEntrega === 'envio' ? 'text-white' : 'bg-white'}`}
-                        style={modalidadEntrega === 'envio' 
-                          ? { backgroundColor: COLORS.azul, borderColor: COLORS.azul }
-                          : { borderColor: COLORS.azul, color: COLORS.azul }}
-                      >
-                        <Truck className="w-4 h-4 inline mr-1" />
-                        Envío a domicilio
-                        <div className="text-xs font-normal mt-0.5">Sin costo</div>
-                      </button>
-                    </div>
-                    {listaActual === 2 && modalidadEntrega === 'envio' && (
-                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
-                        ⚠️ El 5% de descuento no aplica con envío a domicilio.
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Calendario de retiro (cuando la entrega es retiro) */}
-                {(!puedeElegirEnvio || modalidadEntrega === 'retiro') && (
-                  <div>
-                    <p className="text-sm font-bold mb-1" style={{ color: COLORS.azul }}>
-                      <Home className="w-4 h-4 inline mr-1" />¿Qué día retirás?
-                    </p>
-                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
-                      Demora mínima de 24hs. Para casos excepcionales, comunicate al{' '}
-                      <a href={`https://wa.me/${WHATSAPP_DISTRIBUIDORA}`} target="_blank" rel="noopener noreferrer" className="font-bold underline">
-                        {TELEFONO_DISTRIBUIDORA_VISIBLE}
-                      </a>.
-                    </div>
-                    <CalendarioRetiro
-                      feriados={feriados}
-                      seleccionado={diaRetiro}
-                      onSeleccionar={setDiaRetiro}
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      Lun a Vie 7:30–15:30 · Sáb 8:30–11:30 · Dom cerrado
-                    </p>
-                  </div>
-                )}
-
-                {/* Observaciones del pedido */}
-                <div>
-                  <p className="text-sm font-bold mb-1" style={{ color: COLORS.azul }}>Observaciones (opcional)</p>
-                  <textarea
-                    value={observacionesPedido}
-                    onChange={(e) => setObservacionesPedido(e.target.value)}
-                    placeholder="Ej: mandar factura A, entregar en horario de la tarde, etc."
-                    rows={2}
-                    className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-600 text-sm resize-none"
-                  />
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span>Subtotal:</span>
-                  <span className="font-semibold">{formatearPrecio(subtotalCarrito)}</span>
-                </div>
-                {tieneDescuento && (
-                  <div className="flex justify-between text-sm text-green-700">
-                    <span>Descuento 5% (retiro):</span>
-                    <span className="font-semibold">-{formatearPrecio(descuento)}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between text-lg font-black pt-2 border-t">
-                  <span>TOTAL:</span>
-                  <span style={{ color: COLORS.azul }}>{formatearPrecio(totalCarrito)}</span>
-                </div>
-
-                {esConsumidor && !cumpleMinimo && (
-                  <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm p-3 rounded-lg flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div>Falta <strong>{formatearPrecio(MINIMO_CONSUMIDOR_FINAL - subtotalCarrito)}</strong> para llegar al mínimo de compra.</div>
-                  </div>
-                )}
-
-                {pedidoError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div>{pedidoError}</div>
-                  </div>
-                )}
-
+              <div className="border-t p-4">
                 <button
                   onClick={enviarPedido}
                   disabled={!cumpleMinimo || enviandoPedido}
