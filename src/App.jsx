@@ -289,6 +289,7 @@ const CIUDADES_CON_ENVIO = ['Bahía Blanca', 'Punta Alta', 'Médanos'];
 // Determina si un cliente puede elegir entre retirar o envío
 const puedeElegirEntrega = (cliente) => {
   if (!cliente || cliente.tipo === 'consumidor') return false; // consumidor final siempre retira
+  if (cliente.lista === 1) return false; // lista 1: solo retiro
   if (cliente.lista === 5) return false; // lista 5 ya tiene flete descontado
   return CIUDADES_CON_ENVIO.includes(cliente.ciudad);
 };
@@ -829,19 +830,22 @@ function PantallaCarga({ progreso, logoUrl, logosMarcas }) {
   const pct = Math.min(Math.max(progreso, 0), 100);
 
   // Frases que van rotando mientras carga (dan sensación de trabajo real).
+  // La última queda fija (no vuelve a empezar) para cerrar prolijo.
   const FRASES = [
     'Preparando tu pedido…',
     'Verificando lista de precios…',
     'Calculando el stock actual…',
     'Actualizando el catálogo…',
-    'Ordenando los productos…',
-    'Casi listo…'
+    'Ordenando los productos por marca…',
+    'Cargando las imágenes…',
+    'Revisando disponibilidad…',
+    'Ya está casi todo listo…'
   ];
   const [fraseIdx, setFraseIdx] = useState(0);
   useEffect(() => {
     const t = setInterval(() => {
-      setFraseIdx(i => (i + 1) % FRASES.length);
-    }, 1600);
+      setFraseIdx(i => (i < FRASES.length - 1 ? i + 1 : i)); // se queda en la última
+    }, 2600);
     return () => clearInterval(t);
   }, []);
 
@@ -1384,7 +1388,7 @@ export default function App() {
   const [modoSeleccion, setModoSeleccion] = useState({});
   const [archivosListas, setArchivosListas] = useState({ listas1a4: null, lista5: null });
   const [procesandoListas, setProcesandoListas] = useState(false);
-  const [modalidadEntrega, setModalidadEntrega] = useState('retiro'); // 'retiro' | 'envio'
+  const [modalidadEntrega, setModalidadEntrega] = useState(''); // '' | 'retiro' | 'envio' (vacío = todavía no eligió)
   const [diaRetiro, setDiaRetiro] = useState('');           // 'YYYY-MM-DD'
   const [observacionesPedido, setObservacionesPedido] = useState('');
   const [feriados, setFeriados] = useState([]);             // ['YYYY-MM-DD', ...]
@@ -1878,6 +1882,12 @@ export default function App() {
     if (Object.keys(carrito).length === 0 || !cumpleMinimo) return;
     if (!usuario.token) {
       setPedidoError('Tu sesión expiró. Volvé a iniciar sesión para enviar el pedido.');
+      return;
+    }
+
+    // Si el cliente puede elegir entrega, es obligatorio que haya elegido una.
+    if (puedeElegirEnvio && !modalidadEntrega) {
+      setPedidoError('Elegí si retirás en el local o querés envío a domicilio.');
       return;
     }
 
@@ -2505,7 +2515,9 @@ export default function App() {
                     {/* Selector de modalidad de entrega (solo si el cliente puede elegir) */}
                     {puedeElegirEnvio && (
                       <div>
-                        <p className="text-sm font-bold mb-2" style={{ color: COLORS.azul }}>¿Cómo querés recibirlo?</p>
+                        <p className="text-sm font-bold mb-2" style={{ color: COLORS.azul }}>
+                          ¿Cómo querés recibirlo? {!modalidadEntrega && <span className="text-red-500 font-normal">(elegí una opción)</span>}
+                        </p>
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             onClick={() => setModalidadEntrega('retiro')}
@@ -2567,7 +2579,7 @@ export default function App() {
                       <textarea
                         value={observacionesPedido}
                         onChange={(e) => setObservacionesPedido(e.target.value)}
-                        placeholder="Ej: mandar factura A, entregar en horario de la tarde, etc."
+                        placeholder="Agregá una observación (opcional)"
                         rows={2}
                         className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-600 text-sm resize-none"
                       />
