@@ -289,7 +289,6 @@ const CIUDADES_CON_ENVIO = ['Bahía Blanca', 'Punta Alta', 'Médanos'];
 // Determina si un cliente puede elegir entre retirar o envío
 const puedeElegirEntrega = (cliente) => {
   if (!cliente || cliente.tipo === 'consumidor') return false; // consumidor final siempre retira
-  if (cliente.lista === 1) return false; // lista 1: solo retiro
   if (cliente.lista === 5) return false; // lista 5 ya tiene flete descontado
   return CIUDADES_CON_ENVIO.includes(cliente.ciudad);
 };
