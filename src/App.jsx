@@ -274,11 +274,9 @@ const NOMBRES_LISTAS = {
   1: 'Lista 1 - Supermercados',
   2: 'Lista 2 - Comercios',
   3: 'Lista 3 - Hipermercados',
-  4: 'Lista 4 - Consumidor Final',
   5: 'Lista 5 - Revendedores',
 };
 
-const MINIMO_CONSUMIDOR_FINAL = 80000;
 const WHATSAPP_DISTRIBUIDORA = '5492915752165';
 const TELEFONO_DISTRIBUIDORA_VISIBLE = '291 575-2165';
 const ENVIO_WHATSAPP_ACTIVO = false; // Cambiar a true cuando esté listo
@@ -288,7 +286,7 @@ const CIUDADES_CON_ENVIO = ['Bahía Blanca', 'Punta Alta', 'Médanos'];
 
 // Determina si un cliente puede elegir entre retirar o envío
 const puedeElegirEntrega = (cliente) => {
-  if (!cliente || cliente.tipo === 'consumidor') return false; // consumidor final siempre retira
+  if (!cliente) return false;
   if (cliente.lista === 5) return false; // lista 5 ya tiene flete descontado
   return CIUDADES_CON_ENVIO.includes(cliente.ciudad);
 };
@@ -651,6 +649,9 @@ function PantallaLogin({ onLogin }) {
         {/* INICIO: elegir entre ingresar o previsualizar */}
         {modo === 'inicio' && (
           <div className="space-y-3">
+            <div className="text-xs text-center text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-1">
+              Catálogo mayorista, exclusivo para comercios. No realizamos ventas a consumidor final.
+            </div>
             <p className="text-center text-gray-600 mb-4">¿Cómo querés ingresar?</p>
             <button onClick={() => { limpiar(); setModo('login'); }}
               className="w-full py-4 rounded-xl text-white font-bold flex items-center justify-center gap-2 transition-transform hover:scale-[1.02]"
@@ -1484,7 +1485,6 @@ export default function App() {
   }, [usuario]);
 
   const listaActual = usuario?.lista;
-  const esConsumidor = usuario?.tipo === 'consumidor';
   const esPreview = usuario?.tipo === 'preview';
   const puedeElegirEnvio = puedeElegirEntrega(usuario);
   // El descuento del 5% solo aplica a Lista 2 cuando RETIRA en local
@@ -1852,8 +1852,6 @@ export default function App() {
   const descuento = tieneDescuento ? subtotalCarrito * 0.05 : 0;
   const totalCarrito = subtotalCarrito - descuento;
   const cantidadItemsCarrito = useMemo(() => Object.values(carrito).reduce((t, i) => t + i.cantidad, 0), [carrito]);
-  const cumpleMinimo = !esConsumidor || subtotalCarrito >= MINIMO_CONSUMIDOR_FINAL;
-
   if (!usuario) return <PantallaLogin onLogin={setUsuario} />;
 
   // Después del login: pantalla de carga con el camioncito hasta que
@@ -1878,7 +1876,7 @@ export default function App() {
   };
 
   const enviarPedido = async () => {
-    if (Object.keys(carrito).length === 0 || !cumpleMinimo) return;
+    if (Object.keys(carrito).length === 0) return;
     if (!usuario.token) {
       setPedidoError('Tu sesión expiró. Volvé a iniciar sesión para enviar el pedido.');
       return;
@@ -1975,7 +1973,7 @@ export default function App() {
                   DISTRIBUIDORA SAN-RAS SA
                 </h1>
                 <p className="text-xs text-blue-100">
-                  {esPreview ? 'Modo previsualización · sin precios' : (esConsumidor ? 'Consumidor Final' : `${usuario.nombre} · ${NOMBRES_LISTAS[listaActual]}`)}
+                  {esPreview ? 'Modo previsualización · sin precios' : `${usuario.nombre} · ${NOMBRES_LISTAS[listaActual]}`}
                 </p>
               </div>
             </div>
@@ -2202,12 +2200,6 @@ export default function App() {
         </div>
       )}
 
-      {esConsumidor && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-sm text-yellow-800 text-center">
-          <AlertCircle className="w-4 h-4 inline mr-1" />
-          Compra mínima: <strong>{formatearPrecio(MINIMO_CONSUMIDOR_FINAL)}</strong> · Retiro en distribuidora
-        </div>
-      )}
       {listaActual === 2 && (
         <div className="bg-green-50 border-b border-green-200 px-4 py-2 text-sm text-green-800 text-center">
           ✨ Tenés <strong>5% de descuento</strong> retirando la mercadería en la distribuidora
@@ -2599,13 +2591,6 @@ export default function App() {
                       <span style={{ color: COLORS.azul }}>{formatearPrecio(totalCarrito)}</span>
                     </div>
 
-                    {esConsumidor && !cumpleMinimo && (
-                      <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm p-3 rounded-lg flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <div>Falta <strong>{formatearPrecio(MINIMO_CONSUMIDOR_FINAL - subtotalCarrito)}</strong> para llegar al mínimo de compra.</div>
-                      </div>
-                    )}
-
                     {pedidoError && (
                       <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -2622,9 +2607,9 @@ export default function App() {
               <div className="border-t p-4">
                 <button
                   onClick={enviarPedido}
-                  disabled={!cumpleMinimo || enviandoPedido}
+                  disabled={enviandoPedido}
                   className="w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: (cumpleMinimo && !enviandoPedido) ? '#16a34a' : undefined }}
+                  style={{ backgroundColor: !enviandoPedido ? '#16a34a' : undefined }}
                 >
                   <Send className="w-5 h-5" />{enviandoPedido ? 'Enviando pedido…' : 'Confirmar y enviar pedido'}
                 </button>
