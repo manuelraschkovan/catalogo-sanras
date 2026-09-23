@@ -1373,13 +1373,11 @@ export default function App() {
   const [busquedaMarca, setBusquedaMarca] = useState('');
   const [mostrarCarga, setMostrarCarga] = useState(false);
   const [mensajeCarga, setMensajeCarga] = useState('');
-  const [tipoCargaArchivo, setTipoCargaArchivo] = useState('listas-excel');
   const [carrito, setCarrito] = useState({});
   const [enviandoPedido, setEnviandoPedido] = useState(false);
   const [pedidoOk, setPedidoOk] = useState(null);       // { numero, total, items }
   const [pedidoError, setPedidoError] = useState('');
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
-  const [mostrarAdmin, setMostrarAdmin] = useState(false);
   const [mostrarMisPedidos, setMostrarMisPedidos] = useState(false);
   const [mostrarRevendedor, setMostrarRevendedor] = useState(false);
   const [misPedidos, setMisPedidos] = useState([]);
@@ -1998,9 +1996,6 @@ export default function App() {
               <button onClick={abrirMisPedidos} title="Mis pedidos" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
                 <Package className="w-5 h-5" />
               </button>
-              <button onClick={() => setMostrarAdmin(true)} className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
-                <Settings className="w-5 h-5" />
-              </button>
               <button onClick={cerrarSesion} className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
                 <LogOut className="w-5 h-5" />
               </button>
@@ -2613,104 +2608,6 @@ export default function App() {
                 >
                   <Send className="w-5 h-5" />{enviandoPedido ? 'Enviando pedido…' : 'Confirmar y enviar pedido'}
                 </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {mostrarAdmin && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-black" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>ADMINISTRACIÓN</h2>
-              <button onClick={() => { setMostrarAdmin(false); setMostrarCarga(false); setMensajeCarga(''); setArchivosListas({ listas1a4: null, lista5: null }); }}>
-                <X className="w-6 h-6 text-gray-500" />
-              </button>
-            </div>
-
-            {!mostrarCarga ? (
-              <div className="space-y-3">
-                <button onClick={() => { setTipoCargaArchivo('listas-excel'); setMostrarCarga(true); }} className="w-full p-4 border-2 rounded-xl text-left hover:bg-gray-50 transition-colors" style={{ borderColor: COLORS.azul }}>
-                  <div className="flex items-center gap-3">
-                    <FileSpreadsheet className="w-6 h-6" style={{ color: COLORS.azul }} />
-                    <div>
-                      <div className="font-bold" style={{ color: COLORS.azul }}>Cargar listas de precios (Excel)</div>
-                      <div className="text-xs text-gray-500">Subí los archivos .xlsx exportados de Flexxus</div>
-                    </div>
-                  </div>
-                </button>
-                <button onClick={() => { setTipoCargaArchivo('clientes'); setMostrarCarga(true); }} className="w-full p-4 border-2 rounded-xl text-left hover:bg-gray-50 transition-colors" style={{ borderColor: COLORS.azul }}>
-                  <div className="flex items-center gap-3">
-                    <Users className="w-6 h-6" style={{ color: COLORS.azul }} />
-                    <div>
-                      <div className="font-bold" style={{ color: COLORS.azul }}>Actualizar clientes</div>
-                      <div className="text-xs text-gray-500">CSV con números, claves y listas</div>
-                    </div>
-                  </div>
-                </button>
-
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-gray-600">
-                  <strong>Datos cargados:</strong><br/>
-                  📦 {productos.length} productos · 👥 {clientes.length} clientes
-                </div>
-              </div>
-            ) : tipoCargaArchivo === 'listas-excel' ? (
-              <div className="space-y-3">
-                <p className="text-gray-600 text-sm mb-4">
-                  Subí los <strong>2 archivos Excel</strong> exportados de Flexxus. Se van a unir automáticamente por código.
-                </p>
-
-                <div className="border rounded-lg p-3">
-                  <div className="font-semibold text-sm mb-2" style={{ color: COLORS.azul }}>📊 Listas 1 a 4</div>
-                  <input type="file" accept=".xlsx,.xls,.ods"
-                         onChange={(e) => setArchivosListas({...archivosListas, listas1a4: e.target.files[0]})}
-                         className="text-xs w-full" />
-                  {archivosListas.listas1a4 && (<div className="text-xs text-green-700 mt-1">✓ {archivosListas.listas1a4.name}</div>)}
-                </div>
-
-                <div className="border rounded-lg p-3">
-                  <div className="font-semibold text-sm mb-2" style={{ color: COLORS.azul }}>📊 Lista 5</div>
-                  <input type="file" accept=".xlsx,.xls,.ods"
-                         onChange={(e) => setArchivosListas({...archivosListas, lista5: e.target.files[0]})}
-                         className="text-xs w-full" />
-                  {archivosListas.lista5 && (<div className="text-xs text-green-700 mt-1">✓ {archivosListas.lista5.name}</div>)}
-                </div>
-
-                <button onClick={procesarArchivosListas}
-                        disabled={procesandoListas || (!archivosListas.listas1a4 && !archivosListas.lista5)}
-                        className="w-full text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 disabled:bg-gray-300"
-                        style={{ backgroundColor: (procesandoListas || (!archivosListas.listas1a4 && !archivosListas.lista5)) ? undefined : COLORS.azul }}>
-                  <Upload className="w-5 h-5" />
-                  {procesandoListas ? 'Procesando...' : 'Procesar archivos'}
-                </button>
-
-                {mensajeCarga && (<div className="p-3 bg-gray-100 rounded-lg text-sm text-center">{mensajeCarga}</div>)}
-
-                <button onClick={() => { setMostrarCarga(false); setMensajeCarga(''); setArchivosListas({ listas1a4: null, lista5: null }); }}
-                        className="w-full py-2 text-gray-500 text-sm hover:text-gray-700">← Volver</button>
-              </div>
-            ) : (
-              <div>
-                <p className="text-gray-600 text-sm mb-4">Subí el CSV con los clientes, sus claves y la lista que les corresponde.</p>
-
-                <button onClick={descargarPlantillaClientes}
-                        className="w-full mb-3 py-2 border rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-gray-50"
-                        style={{ borderColor: COLORS.azul, color: COLORS.azul }}>
-                  <Download className="w-4 h-4" />Descargar plantilla
-                </button>
-
-                <input ref={fileInputRef} type="file" accept=".csv,.txt" onChange={manejarCargaArchivoClientes} className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()}
-                        className="w-full text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2"
-                        style={{ backgroundColor: COLORS.azul }}>
-                  <Upload className="w-5 h-5" />Elegir archivo CSV
-                </button>
-
-                {mensajeCarga && (<div className="mt-4 p-3 bg-gray-100 rounded-lg text-sm text-center">{mensajeCarga}</div>)}
-
-                <button onClick={() => { setMostrarCarga(false); setMensajeCarga(''); }}
-                        className="w-full mt-3 py-2 text-gray-500 text-sm hover:text-gray-700">← Volver</button>
               </div>
             )}
           </div>
