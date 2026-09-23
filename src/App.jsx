@@ -2776,6 +2776,7 @@ export default function App() {
                             <div className="text-xs font-normal mt-0.5">Sin costo</div>
                           </button>
                         </div>
+                        <p className="text-xs text-gray-500 mt-1.5">Solo hacemos envíos en Bahía Blanca, Punta Alta y Médanos.</p>
                         {listaActual === 2 && modalidadEntrega === 'envio' && (
                           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
                             ⚠️ El 5% de descuento no aplica con envío a domicilio.
