@@ -284,11 +284,12 @@ const ENVIO_WHATSAPP_ACTIVO = false; // Cambiar a true cuando esté listo
 // Ciudades habilitadas para envío a domicilio (sin costo)
 const CIUDADES_CON_ENVIO = ['Bahía Blanca', 'Punta Alta', 'Médanos'];
 
-// Determina si un cliente puede elegir entre retirar o envío
+// Determina si un cliente puede elegir entre retirar o envío.
+// Listas 1, 2 y 3 pueden pedir envío (la zona se valida por la dirección
+// de envío que elija, no por la ciudad del cliente). Lista 5: solo retiro.
 const puedeElegirEntrega = (cliente) => {
   if (!cliente) return false;
-  if (cliente.lista === 5) return false; // lista 5 ya tiene flete descontado
-  return CIUDADES_CON_ENVIO.includes(cliente.ciudad);
+  return [1, 2, 3].includes(cliente.lista);
 };
 
 // Componente del control de cantidad con flujo: Agregar → Input + Tilde → Lápiz para editar
@@ -1360,6 +1361,201 @@ function ModuloRevendedor({ usuario, onCerrar }) {
   );
 }
 
+// ============================================================
+//  MIS DIRECCIONES — gestión de direcciones de envío del cliente
+// ============================================================
+function MisDirecciones({ usuario, onCerrar }) {
+  const [direcciones, setDirecciones] = useState([]);
+  const [ciudades, setCiudades] = useState(CIUDADES_CON_ENVIO);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [fEtiqueta, setFEtiqueta] = useState('');
+  const [fDireccion, setFDireccion] = useState('');
+  const [fCiudad, setFCiudad] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [confirmarBorrar, setConfirmarBorrar] = useState(null);
+
+  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, []);
+
+  async function cargar() {
+    setCargando(true); setError('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/direcciones`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token })
+      });
+      const data = await r.json();
+      if (data.ok) { setDirecciones(data.direcciones || []); if (data.ciudades) setCiudades(data.ciudades); }
+      else setError(data.motivo || 'No se pudieron cargar tus direcciones.');
+    } catch (e) { setError('No se pudo conectar. Revisá tu internet.'); }
+    finally { setCargando(false); }
+  }
+
+  function abrirAlta() {
+    setEditando(null); setFEtiqueta(''); setFDireccion(''); setFCiudad('');
+    setError(''); setMostrarForm(true);
+  }
+  function abrirEdicion(d) {
+    setEditando(d); setFEtiqueta(d.etiqueta || ''); setFDireccion(d.direccion || '');
+    setFCiudad(d.ciudad || ''); setError(''); setMostrarForm(true);
+  }
+
+  async function guardar() {
+    setError('');
+    if (!fDireccion.trim()) { setError('Ingresá la dirección (calle y número).'); return; }
+    if (!fCiudad)           { setError('Elegí la ciudad.'); return; }
+    setGuardando(true);
+    try {
+      const esEd = !!editando;
+      const url = esEd ? `${BACKEND_URL}/api/direcciones/editar` : `${BACKEND_URL}/api/direcciones/crear`;
+      const cuerpo = { token: usuario.token, etiqueta: fEtiqueta.trim(), direccion: fDireccion.trim(), ciudad: fCiudad };
+      if (esEd) cuerpo.id = editando.id;
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+      const data = await r.json();
+      if (data.ok) { setMostrarForm(false); cargar(); }
+      else setError(data.motivo || 'No se pudo guardar.');
+    } catch (e) { setError('No se pudo conectar.'); }
+    finally { setGuardando(false); }
+  }
+
+  async function borrar(d) {
+    setConfirmarBorrar(null);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/direcciones/borrar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token, id: d.id })
+      });
+      const data = await r.json();
+      if (data.ok) cargar(); else setError(data.motivo || 'No se pudo borrar.');
+    } catch (e) { setError('No se pudo conectar.'); }
+  }
+
+  async function hacerFavorita(d) {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/direcciones/favorita`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token, id: d.id })
+      });
+      const data = await r.json();
+      if (data.ok) cargar();
+    } catch (e) {}
+  }
+
+  const inputCls = "w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
+          <h2 className="text-xl font-black flex items-center gap-2" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>
+            <Home className="w-5 h-5" /> MIS DIRECCIONES
+          </h2>
+          <button onClick={onCerrar}><X className="w-6 h-6" /></button>
+        </div>
+
+        <div className="flex items-center gap-2 p-3 border-b">
+          <p className="text-xs text-gray-500">Direcciones para tus envíos (Bahía Blanca, Punta Alta o Médanos).</p>
+          <button onClick={abrirAlta} className="ml-auto flex items-center gap-1 text-white text-sm font-bold px-3 py-2 rounded-lg" style={{ backgroundColor: COLORS.azul }}>
+            <Plus className="w-4 h-4" /> Agregar
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {error && <div className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+          {cargando ? (
+            <div className="text-center py-12 text-gray-500">Cargando…</div>
+          ) : direcciones.length === 0 ? (
+            <div className="text-center py-12">
+              <Home className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">Todavía no cargaste direcciones de envío</p>
+              <p className="text-gray-400 text-sm mt-1">Tocá "Agregar" para cargar una.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {direcciones.map(d => (
+                <div key={d.id} className="border rounded-lg p-3 flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {d.etiqueta && <span className="font-bold text-gray-900">{d.etiqueta}</span>}
+                      {d.favorita && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Predeterminada</span>}
+                    </div>
+                    <div className="text-sm text-gray-700">{d.direccion}</div>
+                    <div className="text-sm text-gray-500">{d.ciudad}</div>
+                  </div>
+                  {!d.favorita && (
+                    <button onClick={() => hacerFavorita(d)} className="p-2 text-gray-400 hover:text-green-600" title="Marcar como predeterminada">
+                      <Check className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button onClick={() => abrirEdicion(d)} className="p-2 text-gray-500 hover:text-blue-600" title="Editar">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setConfirmarBorrar(d)} className="p-2 text-gray-500 hover:text-red-600" title="Borrar">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Formulario alta/edición */}
+      {mostrarForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !guardando && setMostrarForm(false)}>
+          <div className="bg-white rounded-xl max-w-md w-full flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
+              <h3 className="font-black" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>{editando ? 'EDITAR DIRECCIÓN' : 'NUEVA DIRECCIÓN'}</h3>
+              <button onClick={() => !guardando && setMostrarForm(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la dirección <span className="text-gray-400">(opcional)</span></label>
+                <input type="text" value={fEtiqueta} onChange={e => setFEtiqueta(e.target.value)} placeholder="Ej: Local, Depósito, Casa" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección <span className="text-red-500">*</span></label>
+                <input type="text" value={fDireccion} onChange={e => setFDireccion(e.target.value)} placeholder="Calle y número" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ciudad <span className="text-red-500">*</span></label>
+                <select value={fCiudad} onChange={e => setFCiudad(e.target.value)} className={inputCls}>
+                  <option value="">Elegí la ciudad…</option>
+                  {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="p-4 border-t flex gap-2">
+              <button onClick={() => setMostrarForm(false)} disabled={guardando} className="flex-1 py-3 rounded-lg border border-gray-300 font-bold text-gray-700 hover:bg-gray-50">Cancelar</button>
+              <button onClick={guardar} disabled={guardando} className="flex-1 py-3 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>
+                {guardando ? 'Guardando…' : (editando ? 'Guardar' : 'Agregar')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmar borrado */}
+      {confirmarBorrar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full p-5">
+            <p className="font-bold text-gray-900 mb-1">¿Borrar esta dirección?</p>
+            <p className="text-sm text-gray-600 mb-4">{confirmarBorrar.direccion} — {confirmarBorrar.ciudad}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmarBorrar(null)} className="flex-1 py-2 rounded-lg border border-gray-300 font-bold text-gray-700 hover:bg-gray-50">No</button>
+              <button onClick={() => borrar(confirmarBorrar)} className="flex-1 py-2 rounded-lg font-bold text-white bg-red-600 hover:bg-red-700">Sí, borrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [productos, setProductos] = useState([]);
@@ -1380,6 +1576,11 @@ export default function App() {
   const [mostrarCarrito, setMostrarCarrito] = useState(false);
   const [mostrarMisPedidos, setMostrarMisPedidos] = useState(false);
   const [mostrarRevendedor, setMostrarRevendedor] = useState(false);
+  const [mostrarDirecciones, setMostrarDirecciones] = useState(false);
+  // Direcciones de envío para elegir en el carrito
+  const [direccionesEnvio, setDireccionesEnvio] = useState([]);
+  const [direccionElegida, setDireccionElegida] = useState(null); // id de la dirección elegida
+  const [cargandoDirecciones, setCargandoDirecciones] = useState(false);
   const [misPedidos, setMisPedidos] = useState([]);
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [pedidoExpandido, setPedidoExpandido] = useState(null);
@@ -1487,6 +1688,32 @@ export default function App() {
   const puedeElegirEnvio = puedeElegirEntrega(usuario);
   // El descuento del 5% solo aplica a Lista 2 cuando RETIRA en local
   const tieneDescuento = listaActual === 2 && modalidadEntrega === 'retiro';
+
+  // Cargar las direcciones de envío del cliente (para elegir en el carrito).
+  const cargarDireccionesEnvio = async () => {
+    if (!usuario?.token) return;
+    setCargandoDirecciones(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/direcciones`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token })
+      });
+      const data = await r.json();
+      if (data.ok) {
+        setDireccionesEnvio(data.direcciones || []);
+        // Pre-seleccionar la favorita (viene primera), si hay y no había una elegida
+        const fav = (data.direcciones || []).find(d => d.favorita);
+        setDireccionElegida(prev => prev || (fav ? fav.id : null));
+      }
+    } catch (e) { /* si falla, la lista queda vacía y el cliente carga una */ }
+    finally { setCargandoDirecciones(false); }
+  };
+
+  // Cuando el cliente elige "envío", traemos sus direcciones.
+  useEffect(() => {
+    if (modalidadEntrega === 'envio') cargarDireccionesEnvio();
+    // eslint-disable-next-line
+  }, [modalidadEntrega]);
 
   const categorias = useMemo(() => {
     return ['Todas', ...new Set(productos.map(p => p.categoria))];
@@ -1895,6 +2122,17 @@ export default function App() {
       return;
     }
 
+    // Si es envío, tiene que haber una dirección elegida
+    let dirEnvioTexto = '';
+    if (entrega === 'envio') {
+      const dir = direccionesEnvio.find(d => d.id === direccionElegida);
+      if (!dir) {
+        setPedidoError('Elegí una dirección de envío (o cargá una en "Mis direcciones").');
+        return;
+      }
+      dirEnvioTexto = `${dir.etiqueta ? dir.etiqueta + ' - ' : ''}${dir.direccion}, ${dir.ciudad}`;
+    }
+
     // Armamos los items en el formato que espera el backend: { codigoArticulo, cantidad }
     // (el precio lo pone Flexxus, no lo mandamos por seguridad)
     const items = Object.values(carrito).map(item => ({
@@ -1912,6 +2150,7 @@ export default function App() {
           items,
           entrega,
           diaRetiro: entrega === 'retiro' ? formatearFecha(diaRetiro) : '',
+          direccionEnvio: dirEnvioTexto,
           observaciones: observacionesPedido
         })
       });
@@ -1991,6 +2230,11 @@ export default function App() {
               {usuario && usuario.lista === 5 && (
                 <button onClick={() => setMostrarRevendedor(true)} title="Módulo Revendedor" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
                   <Users className="w-5 h-5" />
+                </button>
+              )}
+              {puedeElegirEnvio && (
+                <button onClick={() => setMostrarDirecciones(true)} title="Mis direcciones" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
+                  <Home className="w-5 h-5" />
                 </button>
               )}
               <button onClick={abrirMisPedidos} title="Mis pedidos" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
@@ -2373,6 +2617,10 @@ export default function App() {
         <ModuloRevendedor usuario={usuario} onCerrar={() => setMostrarRevendedor(false)} />
       )}
 
+      {mostrarDirecciones && usuario && puedeElegirEnvio && (
+        <MisDirecciones usuario={usuario} onCerrar={() => setMostrarDirecciones(false)} />
+      )}
+
       {mostrarMisPedidos && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col">
@@ -2531,6 +2779,42 @@ export default function App() {
                         {listaActual === 2 && modalidadEntrega === 'envio' && (
                           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
                             ⚠️ El 5% de descuento no aplica con envío a domicilio.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Selección de dirección de envío (cuando eligió envío) */}
+                    {puedeElegirEnvio && modalidadEntrega === 'envio' && (
+                      <div>
+                        <p className="text-sm font-bold mb-2" style={{ color: COLORS.azul }}>¿A qué dirección lo enviamos?</p>
+                        {cargandoDirecciones ? (
+                          <div className="text-sm text-gray-500 py-2">Cargando tus direcciones…</div>
+                        ) : direccionesEnvio.length === 0 ? (
+                          <div className="text-sm text-gray-600 bg-gray-50 border rounded-lg p-3">
+                            Todavía no tenés direcciones de envío cargadas.
+                            <button onClick={() => setMostrarDirecciones(true)} className="block mt-2 text-white font-bold px-3 py-2 rounded-lg" style={{ backgroundColor: COLORS.azul }}>
+                              + Cargar una dirección
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {direccionesEnvio.map(d => (
+                              <button key={d.id} onClick={() => setDireccionElegida(d.id)}
+                                className={`w-full text-left p-3 rounded-lg border-2 transition-all ${direccionElegida === d.id ? '' : 'bg-white'}`}
+                                style={direccionElegida === d.id ? { borderColor: COLORS.azul, backgroundColor: '#eff6ff' } : { borderColor: '#e5e7eb' }}>
+                                <div className="flex items-center gap-2">
+                                  {d.etiqueta && <span className="font-bold text-sm text-gray-900">{d.etiqueta}</span>}
+                                  {d.favorita && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Predeterminada</span>}
+                                  {direccionElegida === d.id && <Check className="w-4 h-4 ml-auto" style={{ color: COLORS.azul }} />}
+                                </div>
+                                <div className="text-sm text-gray-700">{d.direccion}</div>
+                                <div className="text-xs text-gray-500">{d.ciudad}</div>
+                              </button>
+                            ))}
+                            <button onClick={() => setMostrarDirecciones(true)} className="text-sm font-bold" style={{ color: COLORS.azul }}>
+                              + Agregar o editar direcciones
+                            </button>
                           </div>
                         )}
                       </div>
