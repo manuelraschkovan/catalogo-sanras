@@ -1074,7 +1074,315 @@ function CalendarioRetiro({ feriados, seleccionado, onSeleccionar }) {
 // ============================================================
 //  MÓDULO REVENDEDOR — R1: cartera de clientes
 // ============================================================
-function ModuloRevendedor({ usuario, onCerrar }) {
+// ============================================================
+//  R2 — Sección de márgenes (dentro del módulo revendedor)
+// ============================================================
+// Campo de margen con doble entrada: % <-> precio sobre un costo de referencia.
+function CampoMargen({ costoRef, valor, onGuardar, onBorrar, tienePropio }) {
+  const [pct, setPct] = useState(valor != null ? String(valor) : '');
+  const [precio, setPrecio] = useState(
+    (valor != null && costoRef) ? String(Math.round(costoRef * (1 + valor / 100))) : ''
+  );
+
+  useEffect(() => {
+    setPct(valor != null ? String(valor) : '');
+    setPrecio((valor != null && costoRef) ? String(Math.round(costoRef * (1 + valor / 100))) : '');
+  }, [valor, costoRef]);
+
+  // Al escribir %, calcular precio
+  function cambiarPct(v) {
+    setPct(v);
+    const n = parseFloat(v.replace(',', '.'));
+    if (isFinite(n) && costoRef) setPrecio(String(Math.round(costoRef * (1 + n / 100))));
+    else setPrecio('');
+  }
+  // Al escribir precio, calcular %
+  function cambiarPrecio(v) {
+    setPrecio(v);
+    const n = parseFloat(v.replace(',', '.'));
+    if (isFinite(n) && costoRef) {
+      const p = Math.round(((n / costoRef) - 1) * 10000) / 100; // 2 decimales
+      setPct(String(p));
+    } else setPct('');
+  }
+  function guardar() {
+    const n = parseFloat(String(pct).replace(',', '.'));
+    if (!isFinite(n)) return;
+    onGuardar(Math.round(n * 100) / 100);
+  }
+
+  return (
+    <div className="flex items-end gap-2 flex-wrap">
+      <div>
+        <label className="block text-xs text-gray-500 mb-0.5">Margen %</label>
+        <div className="flex items-center">
+          <input type="text" inputMode="decimal" value={pct} onChange={e => cambiarPct(e.target.value)}
+            placeholder="0" className="w-20 px-2 py-2 border border-gray-300 rounded-lg text-right" />
+          <span className="ml-1 text-gray-500">%</span>
+        </div>
+      </div>
+      {costoRef ? (
+        <div>
+          <label className="block text-xs text-gray-500 mb-0.5">Precio (sobre ${Math.round(costoRef)})</label>
+          <div className="flex items-center">
+            <span className="mr-1 text-gray-500">$</span>
+            <input type="text" inputMode="decimal" value={precio} onChange={e => cambiarPrecio(e.target.value)}
+              placeholder="0" className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-right" />
+          </div>
+        </div>
+      ) : null}
+      <button onClick={guardar} className="px-3 py-2 rounded-lg text-sm font-bold text-white" style={{ backgroundColor: COLORS.azul }}>Guardar</button>
+      {tienePropio && onBorrar && (
+        <button onClick={onBorrar} className="px-3 py-2 rounded-lg text-sm font-bold border border-gray-300 text-gray-600 hover:bg-gray-50">Quitar</button>
+      )}
+    </div>
+  );
+}
+
+function SeccionMargenes({ usuario, productos }) {
+  const [margenes, setMargenes] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  // Búsqueda de marca / artículo (global)
+  const [buscaMarca, setBuscaMarca] = useState('');
+  const [buscaArt, setBuscaArt] = useState('');
+
+  // Cliente elegido (sección 2)
+  const [clientesRev, setClientesRev] = useState([]);
+  const [buscaCliente, setBuscaCliente] = useState('');
+  const [clienteSel, setClienteSel] = useState(null);
+  const [buscaMarcaC, setBuscaMarcaC] = useState('');
+  const [buscaArtC, setBuscaArtC] = useState('');
+
+  useEffect(() => { cargarTodo(); /* eslint-disable-next-line */ }, []);
+
+  async function cargarTodo() {
+    setCargando(true); setError('');
+    try {
+      const [rM, rC] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/revendedor/margenes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) }),
+        fetch(`${BACKEND_URL}/api/revendedor/clientes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) })
+      ]);
+      const dM = await rM.json(); const dC = await rC.json();
+      if (dM.ok) setMargenes(dM.margenes || []);
+      if (dC.ok) setClientesRev(dC.clientes || []);
+    } catch (e) { setError('No se pudo cargar.'); }
+    finally { setCargando(false); }
+  }
+
+  async function fijar(clienteFinal, nivel, clave, porcentaje) {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/revendedor/margenes/fijar`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: usuario.token, clienteFinal, nivel, clave, porcentaje })
+      });
+      const d = await r.json();
+      if (d.ok) cargarTodo(); else setError(d.motivo || 'No se pudo guardar.');
+    } catch (e) { setError('No se pudo conectar.'); }
+  }
+  async function borrar(clienteFinal, nivel, clave) {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/revendedor/margenes/borrar`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: usuario.token, clienteFinal, nivel, clave })
+      });
+      const d = await r.json();
+      if (d.ok) cargarTodo();
+    } catch (e) {}
+  }
+
+  // Buscar el % de un margen puntual en el estado local
+  function getMargen(clienteFinal, nivel, clave) {
+    const m = margenes.find(x => x.clienteFinal === (clienteFinal||'') && x.nivel === nivel && x.clave === (clave||''));
+    return m ? m.porcentaje : null;
+  }
+
+  // Marcas únicas del catálogo
+  const marcas = React.useMemo(() => {
+    const s = new Set((productos||[]).map(p => p.marca).filter(Boolean));
+    return Array.from(s).sort((a,b)=>a.localeCompare(b,'es'));
+  }, [productos]);
+
+  // Costo (lista 5 con IVA) de referencia: el primer artículo de una marca, o el general = 1000
+  function costoDeArticulo(codigo) {
+    const p = (productos||[]).find(x => x.codigo === codigo);
+    return p ? (p.precio || 0) : 0;
+  }
+  function costoDeMarca(marca) {
+    const p = (productos||[]).find(x => x.marca === marca && x.precio > 0);
+    return p ? p.precio : 1000;
+  }
+
+  const marcasFiltradas = buscaMarca.trim() ? marcas.filter(m => m.toLowerCase().includes(buscaMarca.toLowerCase())).slice(0,8) : [];
+  const marcasFiltradasC = buscaMarcaC.trim() ? marcas.filter(m => m.toLowerCase().includes(buscaMarcaC.toLowerCase())).slice(0,8) : [];
+  const artFiltrados = buscaArt.trim() ? (productos||[]).filter(p => (p.descripcion||'').toLowerCase().includes(buscaArt.toLowerCase()) || (p.codigo||'').toLowerCase().includes(buscaArt.toLowerCase())).slice(0,8) : [];
+  const artFiltradosC = buscaArtC.trim() ? (productos||[]).filter(p => (p.descripcion||'').toLowerCase().includes(buscaArtC.toLowerCase()) || (p.codigo||'').toLowerCase().includes(buscaArtC.toLowerCase())).slice(0,8) : [];
+  const clientesFiltrados = buscaCliente.trim() ? clientesRev.filter(c => (c.nombre||'').toLowerCase().includes(buscaCliente.toLowerCase())) : clientesRev;
+
+  // Márgenes por marca/artículo ya cargados (para listarlos)
+  const marcasGlobales = margenes.filter(m => m.clienteFinal==='' && m.nivel==='marca');
+  const artGlobales = margenes.filter(m => m.clienteFinal==='' && m.nivel==='articulo');
+  const marcasCliente = clienteSel ? margenes.filter(m => m.clienteFinal===String(clienteSel.id) && m.nivel==='marca') : [];
+  const artCliente = clienteSel ? margenes.filter(m => m.clienteFinal===String(clienteSel.id) && m.nivel==='articulo') : [];
+
+  const descArt = (codigo) => { const p=(productos||[]).find(x=>x.codigo===codigo); return p ? p.descripcion : codigo; };
+  const inputCls = "w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+  if (cargando) return <div className="p-8 text-center text-gray-500">Cargando márgenes…</div>;
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+
+      {/* SECCIÓN 1 — GLOBAL */}
+      <div className="border rounded-lg p-3">
+        <h3 className="font-black mb-2" style={{ color: COLORS.azul }}>Para todos los clientes</h3>
+
+        {/* General */}
+        <div className="mb-4">
+          <p className="text-sm font-bold text-gray-700 mb-1">Margen general (todos los productos)</p>
+          <CampoMargen costoRef={1000} valor={getMargen('','general','')}
+            tienePropio={getMargen('','general','')!=null}
+            onGuardar={(p)=>fijar('','general','',p)} onBorrar={()=>borrar('','general','')} />
+        </div>
+
+        {/* Por marca */}
+        <div className="mb-4">
+          <p className="text-sm font-bold text-gray-700 mb-1">Margen por marca</p>
+          <input value={buscaMarca} onChange={e=>setBuscaMarca(e.target.value)} placeholder="🔍 Buscar marca…" className={inputCls} />
+          {marcasFiltradas.map(m => (
+            <div key={m} className="mt-2 p-2 bg-gray-50 rounded-lg">
+              <div className="text-sm font-bold mb-1">{m}</div>
+              <CampoMargen costoRef={costoDeMarca(m)} valor={getMargen('','marca',m)}
+                tienePropio={getMargen('','marca',m)!=null}
+                onGuardar={(p)=>fijar('','marca',m,p)} onBorrar={()=>borrar('','marca',m)} />
+            </div>
+          ))}
+          {marcasGlobales.length>0 && (
+            <div className="mt-2 space-y-1">
+              <p className="text-xs text-gray-400">Marcas con margen:</p>
+              {marcasGlobales.map(m => (
+                <div key={m.clave} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
+                  <span className="font-bold">{m.clave}</span><span>{m.porcentaje}%</span>
+                  <button onClick={()=>borrar('','marca',m.clave)} className="ml-auto text-red-600 text-xs">quitar</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Por artículo */}
+        <div>
+          <p className="text-sm font-bold text-gray-700 mb-1">Margen por artículo</p>
+          <input value={buscaArt} onChange={e=>setBuscaArt(e.target.value)} placeholder="🔍 Buscar artículo…" className={inputCls} />
+          {artFiltrados.map(p => (
+            <div key={p.codigo} className="mt-2 p-2 bg-gray-50 rounded-lg">
+              <div className="text-sm font-bold mb-1">{p.descripcion} <span className="text-xs text-gray-400">({p.codigo})</span></div>
+              <CampoMargen costoRef={p.precio||0} valor={getMargen('','articulo',p.codigo)}
+                tienePropio={getMargen('','articulo',p.codigo)!=null}
+                onGuardar={(pp)=>fijar('','articulo',p.codigo,pp)} onBorrar={()=>borrar('','articulo',p.codigo)} />
+            </div>
+          ))}
+          {artGlobales.length>0 && (
+            <div className="mt-2 space-y-1">
+              <p className="text-xs text-gray-400">Artículos con margen:</p>
+              {artGlobales.map(m => (
+                <div key={m.clave} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
+                  <span className="font-bold">{descArt(m.clave)}</span><span>{m.porcentaje}%</span>
+                  <button onClick={()=>borrar('','articulo',m.clave)} className="ml-auto text-red-600 text-xs">quitar</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECCIÓN 2 — POR CLIENTE */}
+      <div className="border rounded-lg p-3">
+        <h3 className="font-black mb-2" style={{ color: COLORS.azul }}>Para un cliente puntual</h3>
+        <input value={buscaCliente} onChange={e=>setBuscaCliente(e.target.value)} placeholder="🔍 Buscar cliente de tu cartera…" className={inputCls} />
+        {!clienteSel && (
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+            {clientesFiltrados.map(c => (
+              <button key={c.id} onClick={()=>setClienteSel(c)} className="block w-full text-left p-2 hover:bg-gray-100 rounded text-sm">
+                <span className="font-bold">{c.nombre}</span> <span className="text-gray-500">· {c.localidad}</span>
+              </button>
+            ))}
+            {clientesRev.length===0 && <p className="text-xs text-gray-400 p-2">Primero cargá clientes en "Mis clientes".</p>}
+          </div>
+        )}
+
+        {clienteSel && (
+          <div className="mt-3">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="font-bold">{clienteSel.nombre}</span>
+              <button onClick={()=>setClienteSel(null)} className="text-sm text-blue-600">cambiar cliente</button>
+            </div>
+
+            {/* General del cliente */}
+            <div className="mb-4">
+              <p className="text-sm font-bold text-gray-700 mb-1">Margen general de este cliente</p>
+              <CampoMargen costoRef={1000} valor={getMargen(String(clienteSel.id),'general','')}
+                tienePropio={getMargen(String(clienteSel.id),'general','')!=null}
+                onGuardar={(p)=>fijar(String(clienteSel.id),'general','',p)} onBorrar={()=>borrar(String(clienteSel.id),'general','')} />
+            </div>
+
+            {/* Marca del cliente */}
+            <div className="mb-4">
+              <p className="text-sm font-bold text-gray-700 mb-1">Margen por marca (de este cliente)</p>
+              <input value={buscaMarcaC} onChange={e=>setBuscaMarcaC(e.target.value)} placeholder="🔍 Buscar marca…" className={inputCls} />
+              {marcasFiltradasC.map(m => (
+                <div key={m} className="mt-2 p-2 bg-gray-50 rounded-lg">
+                  <div className="text-sm font-bold mb-1">{m}</div>
+                  <CampoMargen costoRef={costoDeMarca(m)} valor={getMargen(String(clienteSel.id),'marca',m)}
+                    tienePropio={getMargen(String(clienteSel.id),'marca',m)!=null}
+                    onGuardar={(p)=>fijar(String(clienteSel.id),'marca',m,p)} onBorrar={()=>borrar(String(clienteSel.id),'marca',m)} />
+                </div>
+              ))}
+              {marcasCliente.length>0 && (
+                <div className="mt-2 space-y-1">
+                  {marcasCliente.map(m => (
+                    <div key={m.clave} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
+                      <span className="font-bold">{m.clave}</span><span>{m.porcentaje}%</span>
+                      <button onClick={()=>borrar(String(clienteSel.id),'marca',m.clave)} className="ml-auto text-red-600 text-xs">quitar</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Artículo del cliente */}
+            <div>
+              <p className="text-sm font-bold text-gray-700 mb-1">Margen por artículo (de este cliente)</p>
+              <input value={buscaArtC} onChange={e=>setBuscaArtC(e.target.value)} placeholder="🔍 Buscar artículo…" className={inputCls} />
+              {artFiltradosC.map(p => (
+                <div key={p.codigo} className="mt-2 p-2 bg-gray-50 rounded-lg">
+                  <div className="text-sm font-bold mb-1">{p.descripcion} <span className="text-xs text-gray-400">({p.codigo})</span></div>
+                  <CampoMargen costoRef={p.precio||0} valor={getMargen(String(clienteSel.id),'articulo',p.codigo)}
+                    tienePropio={getMargen(String(clienteSel.id),'articulo',p.codigo)!=null}
+                    onGuardar={(pp)=>fijar(String(clienteSel.id),'articulo',p.codigo,pp)} onBorrar={()=>borrar(String(clienteSel.id),'articulo',p.codigo)} />
+                </div>
+              ))}
+              {artCliente.length>0 && (
+                <div className="mt-2 space-y-1">
+                  {artCliente.map(m => (
+                    <div key={m.clave} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
+                      <span className="font-bold">{descArt(m.clave)}</span><span>{m.porcentaje}%</span>
+                      <button onClick={()=>borrar(String(clienteSel.id),'articulo',m.clave)} className="ml-auto text-red-600 text-xs">quitar</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ModuloRevendedor({ usuario, productos, onCerrar }) {
   const [seccion, setSeccion] = useState('menu');   // 'menu' | 'clientes'
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -1204,7 +1512,7 @@ function ModuloRevendedor({ usuario, onCerrar }) {
         <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
           <h2 className="text-xl font-black flex items-center gap-2" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>
             <Users className="w-5 h-5" />
-            {seccion === 'menu' ? 'MÓDULO REVENDEDOR' : 'MIS CLIENTES'}
+            {seccion === 'menu' ? 'MÓDULO REVENDEDOR' : seccion === 'clientes' ? 'MIS CLIENTES' : 'MÁRGENES'}
           </h2>
           <button onClick={onCerrar}><X className="w-6 h-6" /></button>
         </div>
@@ -1222,10 +1530,18 @@ function ModuloRevendedor({ usuario, onCerrar }) {
                 <div className="text-xs text-gray-500">Cargá y administrá tu cartera de clientes</div>
               </div>
             </button>
+            <button onClick={() => setSeccion('margenes')}
+              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 hover:bg-gray-50 transition-colors text-left"
+              style={{ borderColor: COLORS.azul }}>
+              <Settings className="w-6 h-6" style={{ color: COLORS.azul }} />
+              <div>
+                <div className="font-bold" style={{ color: COLORS.azul }}>Márgenes</div>
+                <div className="text-xs text-gray-500">Definí tus ganancias por producto, marca o cliente</div>
+              </div>
+            </button>
             {[
               ['Levantar pedido', 'Tomá pedidos a tus clientes con tu precio'],
               ['Consolidado y pedido a San-Ras', 'Juntá los pedidos y enviálos'],
-              ['Márgenes', 'Definí tus ganancias por producto o marca'],
             ].map(([t, d]) => (
               <div key={t} className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 opacity-60 text-left">
                 <Package className="w-6 h-6 text-gray-400" />
@@ -1283,6 +1599,18 @@ function ModuloRevendedor({ usuario, onCerrar }) {
                 </div>
               )}
             </div>
+          </>
+        )}
+
+        {/* SECCIÓN márgenes */}
+        {seccion === 'margenes' && (
+          <>
+            <div className="flex items-center gap-2 p-3 border-b">
+              <button onClick={() => setSeccion('menu')} className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
+                <ChevronLeft className="w-4 h-4" /> Volver
+              </button>
+            </div>
+            <SeccionMargenes usuario={usuario} productos={productos} />
           </>
         )}
       </div>
@@ -2802,7 +3130,7 @@ function CatalogoApp() {
 
       {/* Mis pedidos (histórico) */}
       {mostrarRevendedor && usuario && usuario.lista === 5 && (
-        <ModuloRevendedor usuario={usuario} onCerrar={() => setMostrarRevendedor(false)} />
+        <ModuloRevendedor usuario={usuario} productos={productos} onCerrar={() => setMostrarRevendedor(false)} />
       )}
 
       {mostrarDirecciones && usuario && puedeElegirEnvio && (
