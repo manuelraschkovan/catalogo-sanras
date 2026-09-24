@@ -285,10 +285,11 @@ const ENVIO_WHATSAPP_ACTIVO = false; // Cambiar a true cuando esté listo
 const CIUDADES_CON_ENVIO = ['Bahía Blanca', 'Punta Alta', 'Médanos'];
 
 // Determina si un cliente puede elegir entre retirar o envío.
-// Listas 1, 2 y 3 pueden pedir envío (la zona se valida por la dirección
-// de envío que elija, no por la ciudad del cliente). Lista 5: solo retiro.
+// El backend ya calcula 'puedeEnvio' (regla por lista 1/2/3 + excepciones que
+// el admin carga en el panel). Si por algún motivo no viene, caemos a la lista.
 const puedeElegirEntrega = (cliente) => {
   if (!cliente) return false;
+  if (typeof cliente.puedeEnvio === 'boolean') return cliente.puedeEnvio;
   return [1, 2, 3].includes(cliente.lista);
 };
 
@@ -1556,7 +1557,194 @@ function MisDirecciones({ usuario, onCerrar }) {
   );
 }
 
-export default function App() {
+// ============================================================
+//  PANEL DE ADMINISTRACIÓN (acceso por ?panel=<clave-secreta>)
+// ============================================================
+function PanelAdmin() {
+  const [clave, setClave] = useState('');
+  const [entrado, setEntrado] = useState(false);
+  const [errorClave, setErrorClave] = useState('');
+  const [verificando, setVerificando] = useState(false);
+
+  // Búsqueda de cliente
+  const [codigoBusca, setCodigoBusca] = useState('');
+  const [cliente, setCliente] = useState(null);
+  const [buscando, setBuscando] = useState(false);
+  const [errorBusca, setErrorBusca] = useState('');
+  const [mensaje, setMensaje] = useState('');
+
+  // Lista de excepciones cargadas
+  const [excepciones, setExcepciones] = useState([]);
+
+  async function entrar() {
+    setErrorClave(''); setVerificando(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/verificar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave })
+      });
+      const data = await r.json();
+      if (data.ok) { setEntrado(true); cargarExcepciones(); }
+      else setErrorClave(data.motivo || 'Clave incorrecta.');
+    } catch (e) { setErrorClave('No se pudo conectar.'); }
+    finally { setVerificando(false); }
+  }
+
+  async function cargarExcepciones() {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/excepciones`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave })
+      });
+      const data = await r.json();
+      if (data.ok) setExcepciones(data.excepciones || []);
+    } catch (e) {}
+  }
+
+  async function buscar() {
+    setErrorBusca(''); setMensaje(''); setCliente(null);
+    if (!codigoBusca.trim()) { setErrorBusca('Ingresá un código de cliente.'); return; }
+    setBuscando(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/buscar-cliente`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave, codigo: codigoBusca.trim() })
+      });
+      const data = await r.json();
+      if (data.ok) setCliente(data.cliente);
+      else setErrorBusca(data.motivo || 'No se encontró.');
+    } catch (e) { setErrorBusca('No se pudo conectar.'); }
+    finally { setBuscando(false); }
+  }
+
+  async function fijar(habilitado) {
+    if (!cliente) return;
+    setMensaje('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/excepcion/fijar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave, codigo: cliente.codigo, habilitado })
+      });
+      const data = await r.json();
+      if (data.ok) { setMensaje(habilitado ? 'Envío habilitado para este cliente.' : 'Envío bloqueado para este cliente.'); buscar(); cargarExcepciones(); }
+      else setMensaje(data.motivo || 'No se pudo guardar.');
+    } catch (e) { setMensaje('No se pudo conectar.'); }
+  }
+
+  async function quitar() {
+    if (!cliente) return;
+    setMensaje('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/excepcion/quitar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave, codigo: cliente.codigo })
+      });
+      const data = await r.json();
+      if (data.ok) { setMensaje('Se quitó la excepción. Vuelve a la regla por lista.'); buscar(); cargarExcepciones(); }
+    } catch (e) { setMensaje('No se pudo conectar.'); }
+  }
+
+  const inputCls = "w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+  // Pantalla de clave
+  if (!entrado) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: COLORS.azul }}>
+        <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+          <h1 className="text-2xl font-black mb-1" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>PANEL SAN-RAS</h1>
+          <p className="text-gray-500 text-sm mb-4">Ingresá la clave de administración.</p>
+          {errorClave && <div className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded">{errorClave}</div>}
+          <input type="password" value={clave} onChange={e => setClave(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && entrar()}
+            placeholder="Clave de admin" className={inputCls} autoFocus />
+          <button onClick={entrar} disabled={verificando}
+            className="w-full mt-3 py-3 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>
+            {verificando ? 'Verificando…' : 'Entrar'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Panel ya adentro
+  return (
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center gap-2 mb-4">
+          <Settings className="w-6 h-6" style={{ color: COLORS.azul }} />
+          <h1 className="text-2xl font-black" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>ADMINISTRACIÓN</h1>
+        </div>
+
+        {/* Envío por cliente */}
+        <div className="bg-white rounded-xl shadow p-4 mb-4">
+          <h2 className="font-bold mb-1" style={{ color: COLORS.azul }}>Envío por cliente</h2>
+          <p className="text-xs text-gray-500 mb-3">Habilitá o bloqueá el envío de un cliente puntual, más allá de su lista.</p>
+          <div className="flex gap-2">
+            <input type="text" value={codigoBusca} onChange={e => setCodigoBusca(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && buscar()}
+              placeholder="Código de cliente (ej: 82)" className={inputCls} />
+            <button onClick={buscar} disabled={buscando}
+              className="px-5 rounded-lg font-bold text-white whitespace-nowrap" style={{ backgroundColor: COLORS.azul }}>
+              {buscando ? '…' : 'Buscar'}
+            </button>
+          </div>
+          {errorBusca && <div className="mt-3 text-sm text-red-600 bg-red-50 p-2 rounded">{errorBusca}</div>}
+
+          {cliente && (
+            <div className="mt-4 border rounded-lg p-4">
+              <div className="font-bold text-gray-900">{cliente.nombre}</div>
+              <div className="text-sm text-gray-600">Código {cliente.codigo} · Lista {cliente.lista}</div>
+              <div className="mt-2 text-sm">
+                Estado de envío:{' '}
+                <span className="font-bold" style={{ color: cliente.puedeEnvio ? '#16a34a' : '#dc2626' }}>
+                  {cliente.puedeEnvio ? 'HABILITADO' : 'NO disponible'}
+                </span>
+                {cliente.excepcion !== null && (
+                  <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">excepción manual</span>
+                )}
+                {cliente.excepcion === null && (
+                  <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">por su lista</span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button onClick={() => fijar(true)} className="px-3 py-2 rounded-lg text-sm font-bold text-white bg-green-600 hover:bg-green-700">Habilitar envío</button>
+                <button onClick={() => fijar(false)} className="px-3 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700">Bloquear envío</button>
+                {cliente.excepcion !== null && (
+                  <button onClick={quitar} className="px-3 py-2 rounded-lg text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50">Quitar excepción</button>
+                )}
+              </div>
+              {mensaje && <div className="mt-3 text-sm text-gray-700 bg-gray-100 p-2 rounded">{mensaje}</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Excepciones cargadas */}
+        <div className="bg-white rounded-xl shadow p-4">
+          <h2 className="font-bold mb-3" style={{ color: COLORS.azul }}>Excepciones cargadas ({excepciones.length})</h2>
+          {excepciones.length === 0 ? (
+            <p className="text-sm text-gray-400">Todavía no hay excepciones. Todo funciona por la regla de lista.</p>
+          ) : (
+            <div className="space-y-2">
+              {excepciones.map(e => (
+                <div key={e.codigo} className="flex items-center gap-2 border rounded-lg p-2 text-sm">
+                  <span className="font-bold">Cód. {e.codigo}</span>
+                  <span className="font-bold" style={{ color: e.habilitado ? '#16a34a' : '#dc2626' }}>
+                    {e.habilitado ? 'Envío habilitado' : 'Envío bloqueado'}
+                  </span>
+                  <button onClick={() => { setCodigoBusca(e.codigo); setTimeout(buscar, 0); }}
+                    className="ml-auto text-blue-600 hover:underline">ver</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CatalogoApp() {
   const [usuario, setUsuario] = useState(null);
   const [productos, setProductos] = useState([]);
   const [yaSincronizo, setYaSincronizo] = useState(false);
@@ -2900,4 +3088,13 @@ export default function App() {
       )}
     </div>
   );
+}
+
+// Wrapper: decide entre el panel de administración (dirección secreta) y el catálogo.
+export default function App() {
+  let esPanel = false;
+  try {
+    esPanel = new URLSearchParams(window.location.search).get('panel') === 'adminsanrasdimaria';
+  } catch (e) { esPanel = false; }
+  return esPanel ? <PanelAdmin /> : <CatalogoApp />;
 }
