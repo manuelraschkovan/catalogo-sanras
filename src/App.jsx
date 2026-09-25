@@ -1078,7 +1078,8 @@ function CalendarioRetiro({ feriados, seleccionado, onSeleccionar }) {
 //  R2 — Sección de márgenes (dentro del módulo revendedor)
 // ============================================================
 // Campo de margen con doble entrada: % <-> precio sobre un costo de referencia.
-function CampoMargen({ costoRef, valor, onGuardar, onBorrar, tienePropio }) {
+// esHeredado = true cuando el valor mostrado viene de un nivel superior (no es propio).
+function CampoMargen({ costoRef, valor, onGuardar, onBorrar, tienePropio, esHeredado }) {
   const [pct, setPct] = useState(valor != null ? String(valor) : '');
   const [precio, setPrecio] = useState(
     (valor != null && costoRef) ? String(Math.round(costoRef * (1 + valor / 100))) : ''
@@ -1112,7 +1113,11 @@ function CampoMargen({ costoRef, valor, onGuardar, onBorrar, tienePropio }) {
   }
 
   return (
-    <div className="flex items-end gap-2 flex-wrap">
+    <div>
+      {esHeredado && !tienePropio && (
+        <p className="text-xs text-gray-400 mb-1">Heredado del nivel general. Cambialo y guardá para ponerle uno propio.</p>
+      )}
+      <div className="flex items-end gap-2 flex-wrap">
       <div>
         <label className="block text-xs text-gray-500 mb-0.5">Margen %</label>
         <div className="flex items-center">
@@ -1135,6 +1140,7 @@ function CampoMargen({ costoRef, valor, onGuardar, onBorrar, tienePropio }) {
       {tienePropio && onBorrar && (
         <button onClick={onBorrar} className="px-3 py-2 rounded-lg text-sm font-bold border border-gray-300 text-gray-600 hover:bg-gray-50">Quitar</button>
       )}
+      </div>
     </div>
   );
 }
@@ -1198,6 +1204,47 @@ function SeccionMargenes({ usuario, productos }) {
     return m ? m.porcentaje : null;
   }
 
+  // Valor que HEREDARÍA un punto de la cascada del nivel de arriba (sin contar
+  // su propio valor). Se usa para mostrar el campo con el valor heredado en vez
+  // de vacío. La cascada (más específico -> más general):
+  //   6 art-cliente < 5 marca-cliente < 4 general-cliente < 3 art-global < 2 marca-global < 1 general-global
+  function getHeredado(clienteFinal, nivel, clave, marcaDelArticulo) {
+    const cf = clienteFinal || '';
+    // Cadena de "padres" según qué nivel estoy editando:
+    const padres = [];
+    if (nivel === 'articulo' && cf) {          // 6 -> hereda de 5,4,3,2,1
+      padres.push(['', 'marca', marcaDelArticulo, cf]); // marca-cliente (5)
+      padres.push(['', 'general', '', cf]);              // general-cliente (4)
+      padres.push(['', 'articulo', clave, '']);          // art-global (3)
+      padres.push(['', 'marca', marcaDelArticulo, '']);  // marca-global (2)
+      padres.push(['', 'general', '', '']);              // general-global (1)
+    } else if (nivel === 'marca' && cf) {      // 5 -> hereda de 4,2,1
+      padres.push(['', 'general', '', cf]);              // general-cliente (4)
+      padres.push(['', 'marca', clave, '']);             // marca-global (2)
+      padres.push(['', 'general', '', '']);              // general-global (1)
+    } else if (nivel === 'general' && cf) {    // 4 -> hereda de 1
+      padres.push(['', 'general', '', '']);              // general-global (1)
+    } else if (nivel === 'articulo' && !cf) {  // 3 -> hereda de 2,1
+      padres.push(['', 'marca', marcaDelArticulo, '']);  // marca-global (2)
+      padres.push(['', 'general', '', '']);              // general-global (1)
+    } else if (nivel === 'marca' && !cf) {     // 2 -> hereda de 1
+      padres.push(['', 'general', '', '']);              // general-global (1)
+    }
+    for (const [, niv, clv, cli] of padres) {
+      if ((niv === 'marca' || niv === 'articulo') && !clv) continue;
+      const v = getMargen(cli, niv, clv);
+      if (v != null) return v;
+    }
+    return null;
+  }
+
+  // Valor a mostrar en el campo: el propio si existe, si no el heredado.
+  function valorMostrado(clienteFinal, nivel, clave, marcaDelArticulo) {
+    const propio = getMargen(clienteFinal, nivel, clave);
+    if (propio != null) return propio;
+    return getHeredado(clienteFinal, nivel, clave, marcaDelArticulo);
+  }
+
   // Marcas únicas del catálogo
   const marcas = React.useMemo(() => {
     const s = new Set((productos||[]).map(p => p.marca).filter(Boolean));
@@ -1254,8 +1301,9 @@ function SeccionMargenes({ usuario, productos }) {
           {marcasFiltradas.map(m => (
             <div key={m} className="mt-2 p-2 bg-gray-50 rounded-lg">
               <div className="text-sm font-bold mb-1">{m}</div>
-              <CampoMargen costoRef={costoDeMarca(m)} valor={getMargen('','marca',m)}
+              <CampoMargen costoRef={costoDeMarca(m)} valor={valorMostrado('','marca',m)}
                 tienePropio={getMargen('','marca',m)!=null}
+                esHeredado={getMargen('','marca',m)==null && valorMostrado('','marca',m)!=null}
                 onGuardar={(p)=>fijar('','marca',m,p)} onBorrar={()=>borrar('','marca',m)} />
             </div>
           ))}
@@ -1279,8 +1327,9 @@ function SeccionMargenes({ usuario, productos }) {
           {artFiltrados.map(p => (
             <div key={p.codigo} className="mt-2 p-2 bg-gray-50 rounded-lg">
               <div className="text-sm font-bold mb-1">{p.descripcion} <span className="text-xs text-gray-400">({p.codigo})</span></div>
-              <CampoMargen costoRef={p.precio||0} valor={getMargen('','articulo',p.codigo)}
+              <CampoMargen costoRef={p.precio||0} valor={valorMostrado('','articulo',p.codigo,p.marca)}
                 tienePropio={getMargen('','articulo',p.codigo)!=null}
+                esHeredado={getMargen('','articulo',p.codigo)==null && valorMostrado('','articulo',p.codigo,p.marca)!=null}
                 onGuardar={(pp)=>fijar('','articulo',p.codigo,pp)} onBorrar={()=>borrar('','articulo',p.codigo)} />
             </div>
           ))}
@@ -1323,8 +1372,9 @@ function SeccionMargenes({ usuario, productos }) {
             {/* General del cliente */}
             <div className="mb-4">
               <p className="text-sm font-bold text-gray-700 mb-1">Margen general de este cliente</p>
-              <CampoMargen costoRef={1000} valor={getMargen(String(clienteSel.id),'general','')}
+              <CampoMargen costoRef={1000} valor={valorMostrado(String(clienteSel.id),'general','')}
                 tienePropio={getMargen(String(clienteSel.id),'general','')!=null}
+                esHeredado={getMargen(String(clienteSel.id),'general','')==null && valorMostrado(String(clienteSel.id),'general','')!=null}
                 onGuardar={(p)=>fijar(String(clienteSel.id),'general','',p)} onBorrar={()=>borrar(String(clienteSel.id),'general','')} />
             </div>
 
@@ -1335,8 +1385,9 @@ function SeccionMargenes({ usuario, productos }) {
               {marcasFiltradasC.map(m => (
                 <div key={m} className="mt-2 p-2 bg-gray-50 rounded-lg">
                   <div className="text-sm font-bold mb-1">{m}</div>
-                  <CampoMargen costoRef={costoDeMarca(m)} valor={getMargen(String(clienteSel.id),'marca',m)}
+                  <CampoMargen costoRef={costoDeMarca(m)} valor={valorMostrado(String(clienteSel.id),'marca',m)}
                     tienePropio={getMargen(String(clienteSel.id),'marca',m)!=null}
+                    esHeredado={getMargen(String(clienteSel.id),'marca',m)==null && valorMostrado(String(clienteSel.id),'marca',m)!=null}
                     onGuardar={(p)=>fijar(String(clienteSel.id),'marca',m,p)} onBorrar={()=>borrar(String(clienteSel.id),'marca',m)} />
                 </div>
               ))}
@@ -1359,8 +1410,9 @@ function SeccionMargenes({ usuario, productos }) {
               {artFiltradosC.map(p => (
                 <div key={p.codigo} className="mt-2 p-2 bg-gray-50 rounded-lg">
                   <div className="text-sm font-bold mb-1">{p.descripcion} <span className="text-xs text-gray-400">({p.codigo})</span></div>
-                  <CampoMargen costoRef={p.precio||0} valor={getMargen(String(clienteSel.id),'articulo',p.codigo)}
+                  <CampoMargen costoRef={p.precio||0} valor={valorMostrado(String(clienteSel.id),'articulo',p.codigo,p.marca)}
                     tienePropio={getMargen(String(clienteSel.id),'articulo',p.codigo)!=null}
+                    esHeredado={getMargen(String(clienteSel.id),'articulo',p.codigo)==null && valorMostrado(String(clienteSel.id),'articulo',p.codigo,p.marca)!=null}
                     onGuardar={(pp)=>fijar(String(clienteSel.id),'articulo',p.codigo,pp)} onBorrar={()=>borrar(String(clienteSel.id),'articulo',p.codigo)} />
                 </div>
               ))}
