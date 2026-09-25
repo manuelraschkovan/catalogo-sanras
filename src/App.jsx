@@ -1079,68 +1079,90 @@ function CalendarioRetiro({ feriados, seleccionado, onSeleccionar }) {
 // ============================================================
 // Campo de margen con doble entrada: % <-> precio sobre un costo de referencia.
 // esHeredado = true cuando el valor mostrado viene de un nivel superior (no es propio).
-function CampoMargen({ costoRef, valor, onGuardar, onBorrar, tienePropio, esHeredado }) {
-  const [pct, setPct] = useState(valor != null ? String(valor) : '');
+// ============================================================
+//  R2 — Sección de márgenes (dentro del módulo revendedor)
+// ============================================================
+// Editor de margen con doble entrada (% <-> precio). Se abre con el lápiz.
+function EditorMargen({ costoRef, valorInicial, esHeredado, onGuardar, onCancelar }) {
+  const [pct, setPct] = useState(valorInicial != null ? String(valorInicial) : '');
   const [precio, setPrecio] = useState(
-    (valor != null && costoRef) ? String(Math.round(costoRef * (1 + valor / 100))) : ''
+    (valorInicial != null && costoRef) ? String(Math.round(costoRef * (1 + valorInicial / 100))) : ''
   );
-
-  useEffect(() => {
-    setPct(valor != null ? String(valor) : '');
-    setPrecio((valor != null && costoRef) ? String(Math.round(costoRef * (1 + valor / 100))) : '');
-  }, [valor, costoRef]);
-
-  // Al escribir %, calcular precio
   function cambiarPct(v) {
     setPct(v);
     const n = parseFloat(v.replace(',', '.'));
     if (isFinite(n) && costoRef) setPrecio(String(Math.round(costoRef * (1 + n / 100))));
     else setPrecio('');
   }
-  // Al escribir precio, calcular %
   function cambiarPrecio(v) {
     setPrecio(v);
     const n = parseFloat(v.replace(',', '.'));
-    if (isFinite(n) && costoRef) {
-      const p = Math.round(((n / costoRef) - 1) * 10000) / 100; // 2 decimales
-      setPct(String(p));
-    } else setPct('');
+    if (isFinite(n) && costoRef) setPct(String(Math.round(((n / costoRef) - 1) * 10000) / 100));
+    else setPct('');
   }
   function guardar() {
     const n = parseFloat(String(pct).replace(',', '.'));
     if (!isFinite(n)) return;
     onGuardar(Math.round(n * 100) / 100);
   }
-
   return (
-    <div>
-      {esHeredado && !tienePropio && (
-        <p className="text-xs text-gray-400 mb-1">Heredado del nivel general. Cambialo y guardá para ponerle uno propio.</p>
+    <div className="mt-1 p-2 bg-blue-50 rounded-lg">
+      {esHeredado && (
+        <p className="text-xs text-gray-500 mb-1">Ahora hereda {valorInicial != null ? valorInicial + '%' : 'el general'}. Cambialo para ponerle uno propio.</p>
       )}
       <div className="flex items-end gap-2 flex-wrap">
-      <div>
-        <label className="block text-xs text-gray-500 mb-0.5">Margen %</label>
-        <div className="flex items-center">
-          <input type="text" inputMode="decimal" value={pct} onChange={e => cambiarPct(e.target.value)}
-            placeholder="0" className="w-20 px-2 py-2 border border-gray-300 rounded-lg text-right" />
-          <span className="ml-1 text-gray-500">%</span>
-        </div>
-      </div>
-      {costoRef ? (
         <div>
-          <label className="block text-xs text-gray-500 mb-0.5">Precio (sobre ${Math.round(costoRef)})</label>
+          <label className="block text-xs text-gray-500 mb-0.5">Margen %</label>
           <div className="flex items-center">
-            <span className="mr-1 text-gray-500">$</span>
-            <input type="text" inputMode="decimal" value={precio} onChange={e => cambiarPrecio(e.target.value)}
-              placeholder="0" className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-right" />
+            <input type="text" inputMode="decimal" value={pct} onChange={e => cambiarPct(e.target.value)}
+              placeholder="0" className="w-20 px-2 py-2 border border-gray-300 rounded-lg text-right" autoFocus />
+            <span className="ml-1 text-gray-500">%</span>
           </div>
         </div>
-      ) : null}
-      <button onClick={guardar} className="px-3 py-2 rounded-lg text-sm font-bold text-white" style={{ backgroundColor: COLORS.azul }}>Guardar</button>
-      {tienePropio && onBorrar && (
-        <button onClick={onBorrar} className="px-3 py-2 rounded-lg text-sm font-bold border border-gray-300 text-gray-600 hover:bg-gray-50">Quitar</button>
-      )}
+        {costoRef ? (
+          <div>
+            <label className="block text-xs text-gray-500 mb-0.5">Precio (sobre ${Math.round(costoRef)})</label>
+            <div className="flex items-center">
+              <span className="mr-1 text-gray-500">$</span>
+              <input type="text" inputMode="decimal" value={precio} onChange={e => cambiarPrecio(e.target.value)}
+                placeholder="0" className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-right" />
+            </div>
+          </div>
+        ) : null}
+        <button onClick={guardar} className="px-3 py-2 rounded-lg text-sm font-bold text-white" style={{ backgroundColor: COLORS.azul }}>Guardar</button>
+        <button onClick={onCancelar} className="px-3 py-2 rounded-lg text-sm font-bold border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
       </div>
+    </div>
+  );
+}
+
+// Una fila de margen: muestra el % (propio o heredado) y un lápiz para editar.
+function FilaMargen({ etiqueta, sub, costoRef, propio, heredado, onGuardar, onBorrar, abierto, onAbrir, onCerrar }) {
+  const valorMostrar = propio != null ? propio : heredado;
+  return (
+    <div className="border rounded-lg p-2 mt-2">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-gray-800 truncate">{etiqueta}</div>
+          {sub && <div className="text-xs text-gray-400">{sub}</div>}
+        </div>
+        <div className="text-sm font-bold" style={{ color: propio != null ? COLORS.azul : '#9ca3af' }}>
+          {valorMostrar != null ? valorMostrar + '%' : '—'}
+          {propio == null && valorMostrar != null && <span className="ml-1 text-xs font-normal text-gray-400">(heredado)</span>}
+        </div>
+        <button onClick={abierto ? onCerrar : onAbrir} className="p-2 text-gray-500 hover:text-blue-600" title="Editar margen">
+          <Pencil className="w-4 h-4" />
+        </button>
+        {propio != null && onBorrar && (
+          <button onClick={onBorrar} className="p-2 text-gray-500 hover:text-red-600" title="Quitar (volver a heredar)">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+      {abierto && (
+        <EditorMargen costoRef={costoRef} valorInicial={valorMostrar} esHeredado={propio == null}
+          onGuardar={onGuardar} onCancelar={onCerrar} />
+      )}
     </div>
   );
 }
@@ -1149,17 +1171,18 @@ function SeccionMargenes({ usuario, productos }) {
   const [margenes, setMargenes] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
+  const [abierto, setAbierto] = useState(null); // clave del editor abierto
 
-  // Búsqueda de marca / artículo (global)
   const [buscaMarca, setBuscaMarca] = useState('');
   const [buscaArt, setBuscaArt] = useState('');
-
-  // Cliente elegido (sección 2)
   const [clientesRev, setClientesRev] = useState([]);
   const [buscaCliente, setBuscaCliente] = useState('');
   const [clienteSel, setClienteSel] = useState(null);
   const [buscaMarcaC, setBuscaMarcaC] = useState('');
   const [buscaArtC, setBuscaArtC] = useState('');
+
+  // Diálogo de dependientes: { pendiente, dependientes } o null
+  const [dialogoDep, setDialogoDep] = useState(null);
 
   useEffect(() => { cargarTodo(); /* eslint-disable-next-line */ }, []);
 
@@ -1177,60 +1200,20 @@ function SeccionMargenes({ usuario, productos }) {
     finally { setCargando(false); }
   }
 
-  async function fijar(clienteFinal, nivel, clave, porcentaje) {
-    try {
-      const r = await fetch(`${BACKEND_URL}/api/revendedor/margenes/fijar`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ token: usuario.token, clienteFinal, nivel, clave, porcentaje })
-      });
-      const d = await r.json();
-      if (d.ok) cargarTodo(); else setError(d.motivo || 'No se pudo guardar.');
-    } catch (e) { setError('No se pudo conectar.'); }
-  }
-  async function borrar(clienteFinal, nivel, clave) {
-    try {
-      const r = await fetch(`${BACKEND_URL}/api/revendedor/margenes/borrar`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ token: usuario.token, clienteFinal, nivel, clave })
-      });
-      const d = await r.json();
-      if (d.ok) cargarTodo();
-    } catch (e) {}
-  }
-
-  // Buscar el % de un margen puntual en el estado local
-  function getMargen(clienteFinal, nivel, clave) {
-    const m = margenes.find(x => x.clienteFinal === (clienteFinal||'') && x.nivel === nivel && x.clave === (clave||''));
+  function getMargen(cf, nivel, clave) {
+    const m = margenes.find(x => x.clienteFinal === (cf||'') && x.nivel === nivel && x.clave === (clave||''));
     return m ? m.porcentaje : null;
   }
 
-  // Valor que HEREDARÍA un punto de la cascada del nivel de arriba (sin contar
-  // su propio valor). Se usa para mostrar el campo con el valor heredado en vez
-  // de vacío. La cascada (más específico -> más general):
-  //   6 art-cliente < 5 marca-cliente < 4 general-cliente < 3 art-global < 2 marca-global < 1 general-global
+  // Valor heredado del nivel de arriba (misma lógica de cascada del backend).
   function getHeredado(clienteFinal, nivel, clave, marcaDelArticulo) {
-    const cf = clienteFinal || '';
-    // Cadena de "padres" según qué nivel estoy editando:
-    const padres = [];
-    if (nivel === 'articulo' && cf) {          // 6 -> hereda de 5,4,3,2,1
-      padres.push(['', 'marca', marcaDelArticulo, cf]); // marca-cliente (5)
-      padres.push(['', 'general', '', cf]);              // general-cliente (4)
-      padres.push(['', 'articulo', clave, '']);          // art-global (3)
-      padres.push(['', 'marca', marcaDelArticulo, '']);  // marca-global (2)
-      padres.push(['', 'general', '', '']);              // general-global (1)
-    } else if (nivel === 'marca' && cf) {      // 5 -> hereda de 4,2,1
-      padres.push(['', 'general', '', cf]);              // general-cliente (4)
-      padres.push(['', 'marca', clave, '']);             // marca-global (2)
-      padres.push(['', 'general', '', '']);              // general-global (1)
-    } else if (nivel === 'general' && cf) {    // 4 -> hereda de 1
-      padres.push(['', 'general', '', '']);              // general-global (1)
-    } else if (nivel === 'articulo' && !cf) {  // 3 -> hereda de 2,1
-      padres.push(['', 'marca', marcaDelArticulo, '']);  // marca-global (2)
-      padres.push(['', 'general', '', '']);              // general-global (1)
-    } else if (nivel === 'marca' && !cf) {     // 2 -> hereda de 1
-      padres.push(['', 'general', '', '']);              // general-global (1)
-    }
-    for (const [, niv, clv, cli] of padres) {
+    const cf = clienteFinal || ''; const padres = [];
+    if (nivel === 'articulo' && cf) { padres.push(['marca', marcaDelArticulo, cf]); padres.push(['general','',cf]); padres.push(['articulo',clave,'']); padres.push(['marca',marcaDelArticulo,'']); padres.push(['general','','']); }
+    else if (nivel === 'marca' && cf) { padres.push(['general','',cf]); padres.push(['marca',clave,'']); padres.push(['general','','']); }
+    else if (nivel === 'general' && cf) { padres.push(['general','','']); }
+    else if (nivel === 'articulo' && !cf) { padres.push(['marca',marcaDelArticulo,'']); padres.push(['general','','']); }
+    else if (nivel === 'marca' && !cf) { padres.push(['general','','']); }
+    for (const [niv, clv, cli] of padres) {
       if ((niv === 'marca' || niv === 'articulo') && !clv) continue;
       const v = getMargen(cli, niv, clv);
       if (v != null) return v;
@@ -1238,43 +1221,103 @@ function SeccionMargenes({ usuario, productos }) {
     return null;
   }
 
-  // Valor a mostrar en el campo: el propio si existe, si no el heredado.
-  function valorMostrado(clienteFinal, nivel, clave, marcaDelArticulo) {
-    const propio = getMargen(clienteFinal, nivel, clave);
-    if (propio != null) return propio;
-    return getHeredado(clienteFinal, nivel, clave, marcaDelArticulo);
+  // Marca de un artículo (del catálogo).
+  function marcaDe(codigo) { const p = (productos||[]).find(x => x.codigo === codigo); return p ? p.marca : ''; }
+
+  // Encuentra los márgenes MÁS ESPECÍFICOS que dependen del que se está por cambiar.
+  function dependientesDe(clienteFinal, nivel, clave) {
+    const cf = clienteFinal || '';
+    const deps = [];
+    for (const m of margenes) {
+      if (m.clienteFinal === cf && m.nivel === nivel && m.clave === (clave||'')) continue; // el propio no
+      let depende = false;
+      if (nivel === 'general' && cf === '') {
+        // general global -> todo lo demás (marcas/artículos globales + todo de clientes)
+        depende = !(m.clienteFinal === '' && m.nivel === 'general' && m.clave === '');
+      } else if (nivel === 'general' && cf !== '') {
+        // general de un cliente -> marcas y artículos de ESE cliente
+        depende = (m.clienteFinal === cf && (m.nivel === 'marca' || m.nivel === 'articulo'));
+      } else if (nivel === 'marca') {
+        // marca (global o cliente) -> artículos de esa marca, en el mismo ámbito
+        if (m.clienteFinal === cf && m.nivel === 'articulo' && marcaDe(m.clave) === clave) depende = true;
+        // marca global -> también su versión por cada cliente y los artículos de esa marca por cliente
+        if (cf === '' && m.nivel === 'marca' && m.clave === clave && m.clienteFinal !== '') depende = true;
+        if (cf === '' && m.nivel === 'articulo' && marcaDe(m.clave) === clave && m.clienteFinal !== '') depende = true;
+      }
+      if (depende) deps.push(m);
+    }
+    return deps;
   }
 
-  // Marcas únicas del catálogo
+  // Llamadas al backend
+  async function apiFijar(clienteFinal, nivel, clave, porcentaje) {
+    const r = await fetch(`${BACKEND_URL}/api/revendedor/margenes/fijar`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: usuario.token, clienteFinal, nivel, clave, porcentaje })
+    });
+    return r.json();
+  }
+  async function apiBorrarVarios(lista) {
+    const r = await fetch(`${BACKEND_URL}/api/revendedor/margenes/borrar-varios`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: usuario.token, margenes: lista })
+    });
+    return r.json();
+  }
+  async function apiBorrar(clienteFinal, nivel, clave) {
+    const r = await fetch(`${BACKEND_URL}/api/revendedor/margenes/borrar`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: usuario.token, clienteFinal, nivel, clave })
+    });
+    return r.json();
+  }
+
+  // Guardar un margen: si hay dependientes más específicos, preguntar antes.
+  async function guardar(clienteFinal, nivel, clave, porcentaje) {
+    const deps = dependientesDe(clienteFinal, nivel, clave);
+    if (deps.length > 0) {
+      // Mostrar diálogo; guardamos el pendiente para aplicarlo tras la elección
+      setDialogoDep({ pendiente: { clienteFinal, nivel, clave, porcentaje }, dependientes: deps });
+      return;
+    }
+    await apiFijar(clienteFinal, nivel, clave, porcentaje);
+    setAbierto(null);
+    cargarTodo();
+  }
+
+  // Resolución del diálogo de dependientes
+  async function resolverDialogo(borrarDeps) {
+    const { pendiente, dependientes } = dialogoDep;
+    await apiFijar(pendiente.clienteFinal, pendiente.nivel, pendiente.clave, pendiente.porcentaje);
+    if (borrarDeps) {
+      await apiBorrarVarios(dependientes.map(d => ({ clienteFinal: d.clienteFinal, nivel: d.nivel, clave: d.clave })));
+    }
+    setDialogoDep(null);
+    setAbierto(null);
+    cargarTodo();
+  }
+
+  async function borrar(clienteFinal, nivel, clave) {
+    await apiBorrar(clienteFinal, nivel, clave);
+    setAbierto(null);
+    cargarTodo();
+  }
+
   const marcas = React.useMemo(() => {
     const s = new Set((productos||[]).map(p => p.marca).filter(Boolean));
     return Array.from(s).sort((a,b)=>a.localeCompare(b,'es'));
   }, [productos]);
+  function costoDeMarca(marca) { const p = (productos||[]).find(x => x.marca === marca && x.precio > 0); return p ? p.precio : 1000; }
 
-  // Costo (lista 5 con IVA) de referencia: el primer artículo de una marca, o el general = 1000
-  function costoDeArticulo(codigo) {
-    const p = (productos||[]).find(x => x.codigo === codigo);
-    return p ? (p.precio || 0) : 0;
-  }
-  function costoDeMarca(marca) {
-    const p = (productos||[]).find(x => x.marca === marca && x.precio > 0);
-    return p ? p.precio : 1000;
-  }
-
-  const marcasFiltradas = buscaMarca.trim() ? marcas.filter(m => m.toLowerCase().includes(buscaMarca.toLowerCase())).slice(0,8) : [];
-  const marcasFiltradasC = buscaMarcaC.trim() ? marcas.filter(m => m.toLowerCase().includes(buscaMarcaC.toLowerCase())).slice(0,8) : [];
-  const artFiltrados = buscaArt.trim() ? (productos||[]).filter(p => (p.descripcion||'').toLowerCase().includes(buscaArt.toLowerCase()) || (p.codigo||'').toLowerCase().includes(buscaArt.toLowerCase())).slice(0,8) : [];
-  const artFiltradosC = buscaArtC.trim() ? (productos||[]).filter(p => (p.descripcion||'').toLowerCase().includes(buscaArtC.toLowerCase()) || (p.codigo||'').toLowerCase().includes(buscaArtC.toLowerCase())).slice(0,8) : [];
+  const marcasFiltradas = buscaMarca.trim() ? marcas.filter(m => m.toLowerCase().includes(buscaMarca.toLowerCase())).slice(0,10) : [];
+  const marcasFiltradasC = buscaMarcaC.trim() ? marcas.filter(m => m.toLowerCase().includes(buscaMarcaC.toLowerCase())).slice(0,10) : [];
+  const artFiltrados = buscaArt.trim() ? (productos||[]).filter(p => (p.descripcion||'').toLowerCase().includes(buscaArt.toLowerCase()) || (p.codigo||'').toLowerCase().includes(buscaArt.toLowerCase())).slice(0,15) : [];
+  const artFiltradosC = buscaArtC.trim() ? (productos||[]).filter(p => (p.descripcion||'').toLowerCase().includes(buscaArtC.toLowerCase()) || (p.codigo||'').toLowerCase().includes(buscaArtC.toLowerCase())).slice(0,15) : [];
   const clientesFiltrados = buscaCliente.trim() ? clientesRev.filter(c => (c.nombre||'').toLowerCase().includes(buscaCliente.toLowerCase())) : clientesRev;
-
-  // Márgenes por marca/artículo ya cargados (para listarlos)
-  const marcasGlobales = margenes.filter(m => m.clienteFinal==='' && m.nivel==='marca');
-  const artGlobales = margenes.filter(m => m.clienteFinal==='' && m.nivel==='articulo');
-  const marcasCliente = clienteSel ? margenes.filter(m => m.clienteFinal===String(clienteSel.id) && m.nivel==='marca') : [];
-  const artCliente = clienteSel ? margenes.filter(m => m.clienteFinal===String(clienteSel.id) && m.nivel==='articulo') : [];
 
   const descArt = (codigo) => { const p=(productos||[]).find(x=>x.codigo===codigo); return p ? p.descripcion : codigo; };
   const inputCls = "w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
+  const cf = clienteSel ? String(clienteSel.id) : '';
 
   if (cargando) return <div className="p-8 text-center text-gray-500">Cargando márgenes…</div>;
 
@@ -1286,64 +1329,34 @@ function SeccionMargenes({ usuario, productos }) {
       <div className="border rounded-lg p-3">
         <h3 className="font-black mb-2" style={{ color: COLORS.azul }}>Para todos los clientes</h3>
 
-        {/* General */}
         <div className="mb-4">
           <p className="text-sm font-bold text-gray-700 mb-1">Margen general (todos los productos)</p>
-          <CampoMargen costoRef={1000} valor={getMargen('','general','')}
-            tienePropio={getMargen('','general','')!=null}
-            onGuardar={(p)=>fijar('','general','',p)} onBorrar={()=>borrar('','general','')} />
+          <FilaMargen etiqueta="Margen general" costoRef={1000}
+            propio={getMargen('','general','')} heredado={null}
+            abierto={abierto==='g-global'} onAbrir={()=>setAbierto('g-global')} onCerrar={()=>setAbierto(null)}
+            onGuardar={(p)=>guardar('','general','',p)} onBorrar={null} />
         </div>
 
-        {/* Por marca */}
         <div className="mb-4">
           <p className="text-sm font-bold text-gray-700 mb-1">Margen por marca</p>
           <input value={buscaMarca} onChange={e=>setBuscaMarca(e.target.value)} placeholder="🔍 Buscar marca…" className={inputCls} />
           {marcasFiltradas.map(m => (
-            <div key={m} className="mt-2 p-2 bg-gray-50 rounded-lg">
-              <div className="text-sm font-bold mb-1">{m}</div>
-              <CampoMargen costoRef={costoDeMarca(m)} valor={valorMostrado('','marca',m)}
-                tienePropio={getMargen('','marca',m)!=null}
-                esHeredado={getMargen('','marca',m)==null && valorMostrado('','marca',m)!=null}
-                onGuardar={(p)=>fijar('','marca',m,p)} onBorrar={()=>borrar('','marca',m)} />
-            </div>
+            <FilaMargen key={m} etiqueta={m} costoRef={costoDeMarca(m)}
+              propio={getMargen('','marca',m)} heredado={getHeredado('','marca',m)}
+              abierto={abierto==='m-'+m} onAbrir={()=>setAbierto('m-'+m)} onCerrar={()=>setAbierto(null)}
+              onGuardar={(p)=>guardar('','marca',m,p)} onBorrar={()=>borrar('','marca',m)} />
           ))}
-          {marcasGlobales.length>0 && (
-            <div className="mt-2 space-y-1">
-              <p className="text-xs text-gray-400">Marcas con margen:</p>
-              {marcasGlobales.map(m => (
-                <div key={m.clave} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
-                  <span className="font-bold">{m.clave}</span><span>{m.porcentaje}%</span>
-                  <button onClick={()=>borrar('','marca',m.clave)} className="ml-auto text-red-600 text-xs">quitar</button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
-        {/* Por artículo */}
         <div>
           <p className="text-sm font-bold text-gray-700 mb-1">Margen por artículo</p>
-          <input value={buscaArt} onChange={e=>setBuscaArt(e.target.value)} placeholder="🔍 Buscar artículo…" className={inputCls} />
+          <input value={buscaArt} onChange={e=>setBuscaArt(e.target.value)} placeholder="🔍 Buscar por nombre o código…" className={inputCls} />
           {artFiltrados.map(p => (
-            <div key={p.codigo} className="mt-2 p-2 bg-gray-50 rounded-lg">
-              <div className="text-sm font-bold mb-1">{p.descripcion} <span className="text-xs text-gray-400">({p.codigo})</span></div>
-              <CampoMargen costoRef={p.precio||0} valor={valorMostrado('','articulo',p.codigo,p.marca)}
-                tienePropio={getMargen('','articulo',p.codigo)!=null}
-                esHeredado={getMargen('','articulo',p.codigo)==null && valorMostrado('','articulo',p.codigo,p.marca)!=null}
-                onGuardar={(pp)=>fijar('','articulo',p.codigo,pp)} onBorrar={()=>borrar('','articulo',p.codigo)} />
-            </div>
+            <FilaMargen key={p.codigo} etiqueta={p.descripcion} sub={`${p.codigo} · ${p.marca}`} costoRef={p.precio||0}
+              propio={getMargen('','articulo',p.codigo)} heredado={getHeredado('','articulo',p.codigo,p.marca)}
+              abierto={abierto==='a-'+p.codigo} onAbrir={()=>setAbierto('a-'+p.codigo)} onCerrar={()=>setAbierto(null)}
+              onGuardar={(pp)=>guardar('','articulo',p.codigo,pp)} onBorrar={()=>borrar('','articulo',p.codigo)} />
           ))}
-          {artGlobales.length>0 && (
-            <div className="mt-2 space-y-1">
-              <p className="text-xs text-gray-400">Artículos con margen:</p>
-              {artGlobales.map(m => (
-                <div key={m.clave} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
-                  <span className="font-bold">{descArt(m.clave)}</span><span>{m.porcentaje}%</span>
-                  <button onClick={()=>borrar('','articulo',m.clave)} className="ml-auto text-red-600 text-xs">quitar</button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
@@ -1354,7 +1367,7 @@ function SeccionMargenes({ usuario, productos }) {
         {!clienteSel && (
           <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
             {clientesFiltrados.map(c => (
-              <button key={c.id} onClick={()=>setClienteSel(c)} className="block w-full text-left p-2 hover:bg-gray-100 rounded text-sm">
+              <button key={c.id} onClick={()=>{setClienteSel(c); setAbierto(null);}} className="block w-full text-left p-2 hover:bg-gray-100 rounded text-sm">
                 <span className="font-bold">{c.nombre}</span> <span className="text-gray-500">· {c.localidad}</span>
               </button>
             ))}
@@ -1366,73 +1379,63 @@ function SeccionMargenes({ usuario, productos }) {
           <div className="mt-3">
             <div className="flex items-center gap-2 mb-3">
               <span className="font-bold">{clienteSel.nombre}</span>
-              <button onClick={()=>setClienteSel(null)} className="text-sm text-blue-600">cambiar cliente</button>
+              <button onClick={()=>{setClienteSel(null); setAbierto(null);}} className="text-sm text-blue-600">cambiar cliente</button>
             </div>
 
-            {/* General del cliente */}
             <div className="mb-4">
               <p className="text-sm font-bold text-gray-700 mb-1">Margen general de este cliente</p>
-              <CampoMargen costoRef={1000} valor={valorMostrado(String(clienteSel.id),'general','')}
-                tienePropio={getMargen(String(clienteSel.id),'general','')!=null}
-                esHeredado={getMargen(String(clienteSel.id),'general','')==null && valorMostrado(String(clienteSel.id),'general','')!=null}
-                onGuardar={(p)=>fijar(String(clienteSel.id),'general','',p)} onBorrar={()=>borrar(String(clienteSel.id),'general','')} />
+              <FilaMargen etiqueta="Margen general" costoRef={1000}
+                propio={getMargen(cf,'general','')} heredado={getHeredado(cf,'general','')}
+                abierto={abierto==='cg'} onAbrir={()=>setAbierto('cg')} onCerrar={()=>setAbierto(null)}
+                onGuardar={(p)=>guardar(cf,'general','',p)} onBorrar={()=>borrar(cf,'general','')} />
             </div>
 
-            {/* Marca del cliente */}
             <div className="mb-4">
               <p className="text-sm font-bold text-gray-700 mb-1">Margen por marca (de este cliente)</p>
               <input value={buscaMarcaC} onChange={e=>setBuscaMarcaC(e.target.value)} placeholder="🔍 Buscar marca…" className={inputCls} />
               {marcasFiltradasC.map(m => (
-                <div key={m} className="mt-2 p-2 bg-gray-50 rounded-lg">
-                  <div className="text-sm font-bold mb-1">{m}</div>
-                  <CampoMargen costoRef={costoDeMarca(m)} valor={valorMostrado(String(clienteSel.id),'marca',m)}
-                    tienePropio={getMargen(String(clienteSel.id),'marca',m)!=null}
-                    esHeredado={getMargen(String(clienteSel.id),'marca',m)==null && valorMostrado(String(clienteSel.id),'marca',m)!=null}
-                    onGuardar={(p)=>fijar(String(clienteSel.id),'marca',m,p)} onBorrar={()=>borrar(String(clienteSel.id),'marca',m)} />
-                </div>
+                <FilaMargen key={m} etiqueta={m} costoRef={costoDeMarca(m)}
+                  propio={getMargen(cf,'marca',m)} heredado={getHeredado(cf,'marca',m)}
+                  abierto={abierto==='cm-'+m} onAbrir={()=>setAbierto('cm-'+m)} onCerrar={()=>setAbierto(null)}
+                  onGuardar={(p)=>guardar(cf,'marca',m,p)} onBorrar={()=>borrar(cf,'marca',m)} />
               ))}
-              {marcasCliente.length>0 && (
-                <div className="mt-2 space-y-1">
-                  {marcasCliente.map(m => (
-                    <div key={m.clave} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
-                      <span className="font-bold">{m.clave}</span><span>{m.porcentaje}%</span>
-                      <button onClick={()=>borrar(String(clienteSel.id),'marca',m.clave)} className="ml-auto text-red-600 text-xs">quitar</button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
-            {/* Artículo del cliente */}
             <div>
               <p className="text-sm font-bold text-gray-700 mb-1">Margen por artículo (de este cliente)</p>
-              <input value={buscaArtC} onChange={e=>setBuscaArtC(e.target.value)} placeholder="🔍 Buscar artículo…" className={inputCls} />
+              <input value={buscaArtC} onChange={e=>setBuscaArtC(e.target.value)} placeholder="🔍 Buscar por nombre o código…" className={inputCls} />
               {artFiltradosC.map(p => (
-                <div key={p.codigo} className="mt-2 p-2 bg-gray-50 rounded-lg">
-                  <div className="text-sm font-bold mb-1">{p.descripcion} <span className="text-xs text-gray-400">({p.codigo})</span></div>
-                  <CampoMargen costoRef={p.precio||0} valor={valorMostrado(String(clienteSel.id),'articulo',p.codigo,p.marca)}
-                    tienePropio={getMargen(String(clienteSel.id),'articulo',p.codigo)!=null}
-                    esHeredado={getMargen(String(clienteSel.id),'articulo',p.codigo)==null && valorMostrado(String(clienteSel.id),'articulo',p.codigo,p.marca)!=null}
-                    onGuardar={(pp)=>fijar(String(clienteSel.id),'articulo',p.codigo,pp)} onBorrar={()=>borrar(String(clienteSel.id),'articulo',p.codigo)} />
-                </div>
+                <FilaMargen key={p.codigo} etiqueta={p.descripcion} sub={`${p.codigo} · ${p.marca}`} costoRef={p.precio||0}
+                  propio={getMargen(cf,'articulo',p.codigo)} heredado={getHeredado(cf,'articulo',p.codigo,p.marca)}
+                  abierto={abierto==='ca-'+p.codigo} onAbrir={()=>setAbierto('ca-'+p.codigo)} onCerrar={()=>setAbierto(null)}
+                  onGuardar={(pp)=>guardar(cf,'articulo',p.codigo,pp)} onBorrar={()=>borrar(cf,'articulo',p.codigo)} />
               ))}
-              {artCliente.length>0 && (
-                <div className="mt-2 space-y-1">
-                  {artCliente.map(m => (
-                    <div key={m.clave} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
-                      <span className="font-bold">{descArt(m.clave)}</span><span>{m.porcentaje}%</span>
-                      <button onClick={()=>borrar(String(clienteSel.id),'articulo',m.clave)} className="ml-auto text-red-600 text-xs">quitar</button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         )}
       </div>
+
+      {/* Diálogo de dependientes */}
+      {dialogoDep && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full p-5">
+            <p className="font-bold text-gray-900 mb-1">Hay márgenes más específicos</p>
+            <p className="text-sm text-gray-600 mb-3">
+              Tenés {dialogoDep.dependientes.length} margen{dialogoDep.dependientes.length!==1?'es':''} más específico{dialogoDep.dependientes.length!==1?'s':''} que dependen de este.
+              ¿Querés mantenerlos como están, o que vuelvan a heredar el nuevo valor?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button onClick={()=>resolverDialogo(false)} className="w-full py-2 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>Mantenerlos como están</button>
+              <button onClick={()=>resolverDialogo(true)} className="w-full py-2 rounded-lg font-bold border border-gray-300 text-gray-700 hover:bg-gray-50">Que vuelvan a heredar</button>
+              <button onClick={()=>setDialogoDep(null)} className="w-full py-2 text-sm text-gray-500">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 function ModuloRevendedor({ usuario, productos, onCerrar }) {
   const [seccion, setSeccion] = useState('menu');   // 'menu' | 'clientes'
