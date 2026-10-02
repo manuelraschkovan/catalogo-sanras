@@ -2417,6 +2417,8 @@ function CatalogoApp() {
   const [levantarPara, setLevantarPara] = useState(null);   // { id, nombre, localidad } o null
   const [margenesRev, setMargenesRev] = useState([]);        // márgenes del revendedor
   const [itemsPedidoRev, setItemsPedidoRev] = useState({});  // { codigoArticulo: cantidad } del cliente activo
+  const [cargandoLevantar, setCargandoLevantar] = useState(false);  // pantalla de carga al entrar a un cliente
+  const [mostrarPedidoRev, setMostrarPedidoRev] = useState(false);  // carrito del cliente en modo levantar
   // Direcciones de envío para elegir en el carrito
   const [direccionesEnvio, setDireccionesEnvio] = useState([]);
   const [direccionElegida, setDireccionElegida] = useState(null); // id de la dirección elegida
@@ -2621,10 +2623,30 @@ function CatalogoApp() {
   };
   const obtenerPrecioBulto = (producto) => obtenerPrecioUnitario(producto) * (producto.unidadesPorBulto || 1);
 
+  // En modo levantar pedido, los mensajes de empaque (que el backend armó con el
+  // COSTO) se recalculan con el precio de VENTA del cliente. Fuera de ese modo,
+  // devuelve el empaque original tal cual.
+  const empaqueParaMostrar = (producto) => {
+    const emp = producto.empaque;
+    if (!emp || !levantarPara || emp.avisoFaltaDato) return emp;
+    const precioV = obtenerPrecioUnitario(producto);   // precio de venta (unidad)
+    const copia = { ...emp };
+    if (emp.soloBulto) {
+      const u = emp.unidadesPorPaquete;
+      if (u) copia.mensajeReferencia = `precio x unidad: $${(precioV / u).toFixed(2)}`;
+    } else {
+      // mensajePrincipal muestra el precio por unidad; referencia muestra la caja
+      copia.mensajePrincipal = `precio x unidad: $${precioV.toFixed(2)}`;
+      if (emp.unidadesPorCaja) copia.mensajeReferencia = `Caja cerrada: ${emp.unidadesPorCaja} unidades = $${(precioV * emp.unidadesPorCaja).toFixed(0)}`;
+    }
+    return copia;
+  };
+
   // --- MODO LEVANTAR PEDIDO (R3) ---
   // Entrar al modo para un cliente del revendedor: carga márgenes + su pedido.
   const entrarLevantarPedido = async (cliente) => {
     setMostrarRevendedor(false);
+    setCargandoLevantar(true);
     setLevantarPara(cliente);
     try {
       const [rM, rP] = await Promise.all([
@@ -2633,12 +2655,11 @@ function CatalogoApp() {
       ]);
       const dM = await rM.json(); const dP = await rP.json();
       if (dM.ok) setMargenesRev(dM.margenes || []);
-      if (dP.ok) {
-        const mapa = {};
-        (dP.items || []).filter(i => i.idClienteFinal === cliente.id).forEach(i => { mapa[i.codigoArticulo] = i.cantidad; });
-        setItemsPedidoRev(mapa);
-      }
+      const mapa = {};
+      if (dP.ok) (dP.items || []).filter(i => i.idClienteFinal === cliente.id).forEach(i => { mapa[i.codigoArticulo] = i.cantidad; });
+      setItemsPedidoRev(mapa);
     } catch (e) { /* si falla, igual se puede navegar; queda vacío */ }
+    finally { setCargandoLevantar(false); }
   };
 
   // Salir del modo levantar pedido (volver al catálogo normal del revendedor).
@@ -2989,6 +3010,17 @@ function CatalogoApp() {
          'FELIPE FORT', 'NIKITOS', 'TRIO', 'ZUPAY', 'DULCOR SA', 'MANOLITO', 'CARIMEL', 'DONOSTI'];
     const logosMarcas = marcasParaLogos.map(obtenerUrlLogoMarca).filter(Boolean);
     return <PantallaCarga progreso={progresoCarga} logoUrl={LOGO_URL} logosMarcas={logosMarcas} />;
+  }
+
+  // Pantalla de carga breve al entrar a levantar pedido de un cliente.
+  if (cargandoLevantar && levantarPara) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center" style={{ backgroundColor: VERDE_REV.fondo }}>
+        <div className="w-14 h-14 rounded-full border-4 border-gray-200 animate-spin mb-4" style={{ borderTopColor: VERDE_REV.principal }} />
+        <p className="font-bold text-lg" style={{ color: VERDE_REV.principal }}>Preparando el pedido…</p>
+        <p className="text-sm text-gray-500 mt-1 uppercase font-black">{levantarPara.nombre}</p>
+      </div>
+    );
   }
 
   // Formatea 'YYYY-MM-DD' a 'DD/MM/AAAA' para mostrar y mandar
@@ -3440,30 +3472,33 @@ function CatalogoApp() {
                                   )}
                                 </div>
 
-                                {producto.empaque && (
+                                {producto.empaque && (() => {
+                                  const emp = empaqueParaMostrar(producto);
+                                  return (
                                   <div className="text-xs mb-2 leading-snug">
-                                    {producto.empaque.avisoFaltaDato ? (
+                                    {emp.avisoFaltaDato ? (
                                       <span className="text-orange-600 font-semibold">⚠ Revisar</span>
                                     ) : (
                                       <>
                                         {producto.soloBulto ? (
                                           <>
                                             <div className="font-semibold" style={{ color: COLORS.azul }}>
-                                              {producto.empaque.mensajePrincipal}
+                                              {emp.mensajePrincipal}
                                             </div>
-                                            {producto.empaque.mensajeReferencia && (
-                                              <div className="text-gray-500">{producto.empaque.mensajeReferencia}</div>
+                                            {emp.mensajeReferencia && (
+                                              <div className="text-gray-500">{emp.mensajeReferencia}</div>
                                             )}
                                           </>
                                         ) : (
-                                          producto.empaque.mensajeReferencia && (
-                                            <div className="text-gray-500">{producto.empaque.mensajeReferencia}</div>
+                                          emp.mensajeReferencia && (
+                                            <div className="text-gray-500">{emp.mensajeReferencia}</div>
                                           )
                                         )}
                                       </>
                                     )}
                                   </div>
-                                )}
+                                  );
+                                })()}
 
                                 <ControlCantidad
                                   producto={producto}
@@ -3655,18 +3690,85 @@ function CatalogoApp() {
         }
         return (
           <div className="fixed bottom-0 left-0 right-0 z-30 border-t shadow-2xl" style={{ backgroundColor: COLORS.azul, color: 'white' }}>
-            <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-              <div className="flex-1">
-                <div className="text-xs opacity-80">Pedido de {levantarPara.nombre}</div>
+            <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-2">
+              <button onClick={() => setMostrarPedidoRev(true)} className="flex-1 text-left">
+                <div className="text-xs opacity-80">Pedido de {levantarPara.nombre} · ver detalle</div>
                 <div className="font-black text-lg">{unidades} u · ${Math.round(venta).toLocaleString('es-AR')}</div>
-              </div>
-              <button onClick={salirLevantarPedido} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg font-bold">
+              </button>
+              <button onClick={() => setMostrarPedidoRev(true)} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg font-bold text-sm">
+                Ver mi pedido
+              </button>
+              <button onClick={salirLevantarPedido} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg font-bold text-sm">
                 Terminar
               </button>
             </div>
           </div>
         );
       })()}
+
+      {/* Carrito del cliente en modo levantar pedido */}
+      {levantarPara && mostrarPedidoRev && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
+              <h2 className="text-lg font-black flex items-center gap-2" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>
+                <ShoppingCart className="w-5 h-5" /> PEDIDO DE {String(levantarPara.nombre).toUpperCase()}
+              </h2>
+              <button onClick={() => setMostrarPedidoRev(false)}><X className="w-6 h-6" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {Object.keys(itemsPedidoRev).length === 0 ? (
+                <div className="text-center py-10 text-gray-500">
+                  <ShoppingCart className="w-14 h-14 text-gray-300 mx-auto mb-2" />
+                  Todavía no cargaste productos para este cliente.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {Object.entries(itemsPedidoRev).map(([codigo, cant]) => {
+                    const p = productos.find(x => x.codigo === codigo);
+                    if (!p) return null;
+                    const pv = obtenerPrecioUnitario(p);
+                    return (
+                      <div key={codigo} className="flex items-center gap-2 border rounded-lg p-2">
+                        <img src={p.imagen} alt={p.nombre} className="w-12 h-12 object-cover rounded" onError={(e)=>{e.target.onerror=null; e.target.src=`https://via.placeholder.com/80/1e2a6e/ffffff?text=${encodeURIComponent(p.codigo)}`;}} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-gray-800 truncate">{p.nombre}</div>
+                          <div className="text-xs text-gray-400">{p.codigo} · {p.marca}</div>
+                          <div className="text-xs text-gray-600">{formatearPrecio(pv)} c/u</div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={()=>fijarCantidadRev(codigo, cant-1)} className="w-7 h-7 bg-gray-100 rounded flex items-center justify-center"><Minus className="w-3 h-3" /></button>
+                          <input type="number" min="0" value={cant} onChange={e=>fijarCantidadRev(codigo, e.target.value)} onFocus={e=>e.target.select()} className="w-12 text-center border rounded py-1 text-sm" />
+                          <button onClick={()=>fijarCantidadRev(codigo, cant+1)} className="w-7 h-7 text-white rounded flex items-center justify-center" style={{ backgroundColor: COLORS.azul }}><Plus className="w-3 h-3" /></button>
+                        </div>
+                        <div className="text-right w-20">
+                          <div className="font-black text-sm" style={{ color: COLORS.azul }}>{formatearPrecio(pv*cant)}</div>
+                          <button onClick={()=>fijarCantidadRev(codigo, 0)} className="text-red-500"><Trash2 className="w-4 h-4 inline" /></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {Object.keys(itemsPedidoRev).length > 0 && (() => {
+              let u=0, v=0;
+              for (const [codigo, cant] of Object.entries(itemsPedidoRev)) { const p=productos.find(x=>x.codigo===codigo); if(!p) continue; u+=cant; v+=obtenerPrecioUnitario(p)*cant; }
+              return (
+                <div className="border-t p-4">
+                  <div className="flex justify-between font-black text-lg mb-2">
+                    <span>Total ({u} u)</span>
+                    <span style={{ color: COLORS.azul }}>{formatearPrecio(v)}</span>
+                  </div>
+                  <button onClick={()=>setMostrarPedidoRev(false)} className="w-full py-3 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>
+                    Seguir cargando
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {mostrarCarrito && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
