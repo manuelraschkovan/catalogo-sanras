@@ -1484,8 +1484,8 @@ function resolverMargenFront(margenes, clienteFinal, articulo, marcaArt) {
   return null;
 }
 
-function SeccionLevantarPedido({ usuario, productos, onLevantar }) {
-  const [vista, setVista] = useState('clientes'); // 'clientes' | 'estadisticas'
+function SeccionLevantarPedido({ usuario, productos, onLevantar, vistaInicial }) {
+  const [vista, setVista] = useState(vistaInicial || 'clientes'); // 'clientes' | 'estadisticas'
   const [clientes, setClientes] = useState([]);
   const [margenes, setMargenes] = useState([]);
   const [items, setItems] = useState([]);
@@ -1619,8 +1619,10 @@ function SeccionLevantarPedido({ usuario, productos, onLevantar }) {
 
 
 
-function ModuloRevendedor({ usuario, productos, onLevantar, onCerrar }) {
-  const [seccion, setSeccion] = useState('menu');   // 'menu' | 'clientes'
+function ModuloRevendedor({ usuario, productos, pestanaInicial, onLevantar, onCerrar }) {
+  // pestanaInicial: 'menu' (por defecto), 'pedido' (levantar) o 'estadisticas'.
+  const seccionInicial = (pestanaInicial === 'pedido' || pestanaInicial === 'estadisticas') ? 'pedido' : 'menu';
+  const [seccion, setSeccion] = useState(seccionInicial);   // 'menu' | 'clientes' | 'margenes' | 'pedido'
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
@@ -1809,7 +1811,7 @@ function ModuloRevendedor({ usuario, productos, onLevantar, onCerrar }) {
                 <ChevronLeft className="w-4 h-4" /> Volver
               </button>
             </div>
-            <SeccionLevantarPedido usuario={usuario} productos={productos} onLevantar={onLevantar} />
+            <SeccionLevantarPedido usuario={usuario} productos={productos} onLevantar={onLevantar} vistaInicial={pestanaInicial === 'estadisticas' ? 'estadisticas' : 'clientes'} />
           </>
         )}
 
@@ -2419,6 +2421,8 @@ function CatalogoApp() {
   const [itemsPedidoRev, setItemsPedidoRev] = useState({});  // { codigoArticulo: cantidad } del cliente activo
   const [cargandoLevantar, setCargandoLevantar] = useState(false);  // pantalla de carga al entrar a un cliente
   const [mostrarPedidoRev, setMostrarPedidoRev] = useState(false);  // carrito del cliente en modo levantar
+  const [pedidoRevGuardado, setPedidoRevGuardado] = useState(null); // {nombre} cuando se muestra "pedido guardado"
+  const [pestanaRevInicial, setPestanaRevInicial] = useState('menu'); // pestaña con la que abre el módulo
   // Direcciones de envío para elegir en el carrito
   const [direccionesEnvio, setDireccionesEnvio] = useState([]);
   const [direccionElegida, setDireccionElegida] = useState(null); // id de la dirección elegida
@@ -2663,9 +2667,37 @@ function CatalogoApp() {
   };
 
   // Salir del modo levantar pedido (volver al catálogo normal del revendedor).
-  const salirLevantarPedido = () => {
+  // Salir del modo levantar y volver al módulo revendedor (pestaña opcional).
+  const salirLevantarPedido = (pestana) => {
+    const nombre = levantarPara ? levantarPara.nombre : '';
     setLevantarPara(null);
     setItemsPedidoRev({});
+    setMostrarPedidoRev(false);
+    setPedidoRevGuardado(null);
+    if (pestana) { setPestanaRevInicial(pestana); setMostrarRevendedor(true); }
+    else { setPestanaRevInicial('menu'); setMostrarRevendedor(true); }
+  };
+
+  // "Terminar": muestra la pantalla de "pedido guardado" (neutra, sin costos).
+  const terminarLevantarPedido = () => {
+    setMostrarPedidoRev(false);
+    setPedidoRevGuardado({ nombre: levantarPara ? levantarPara.nombre : '' });
+  };
+
+  // Desde la pantalla de éxito: ir al catálogo normal (sin módulo).
+  const finLevantarAlCatalogo = () => {
+    setLevantarPara(null);
+    setItemsPedidoRev({});
+    setMostrarPedidoRev(false);
+    setPedidoRevGuardado(null);
+  };
+  // Desde la pantalla de éxito: ir al módulo (en una pestaña).
+  const finLevantarAlModulo = (pestana) => {
+    setLevantarPara(null);
+    setItemsPedidoRev({});
+    setMostrarPedidoRev(false);
+    setPedidoRevGuardado(null);
+    setPestanaRevInicial(pestana || 'menu');
     setMostrarRevendedor(true);
   };
 
@@ -3162,7 +3194,7 @@ function CatalogoApp() {
                 </button>
               ) : levantarPara ? (
                 // En modo levantar pedido: botón visible para salir/cambiar de cliente
-                <button onClick={salirLevantarPedido} className="bg-white/25 hover:bg-white/40 px-3 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-1">
+                <button onClick={terminarLevantarPedido} className="bg-white/25 hover:bg-white/40 px-3 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-1">
                   <X className="w-4 h-4" /> Salir
                 </button>
               ) : (
@@ -3605,7 +3637,7 @@ function CatalogoApp() {
       )}
 
       {mostrarRevendedor && usuario && usuario.lista === 5 && (
-        <ModuloRevendedor usuario={usuario} productos={productos} onLevantar={entrarLevantarPedido} onCerrar={() => setMostrarRevendedor(false)} />
+        <ModuloRevendedor usuario={usuario} productos={productos} pestanaInicial={pestanaRevInicial} onLevantar={entrarLevantarPedido} onCerrar={() => { setMostrarRevendedor(false); setPestanaRevInicial('menu'); }} />
       )}
 
       {mostrarDirecciones && usuario && puedeElegirEnvio && (
@@ -3679,6 +3711,32 @@ function CatalogoApp() {
         </div>
       )}
 
+      {/* Pantalla "Pedido guardado" al terminar (neutra, sin costos) */}
+      {pedidoRevGuardado && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: VERDE_REV.fondo }}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+            <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#dcfce7' }}>
+              <Check className="w-9 h-9" style={{ color: VERDE_REV.principal }} />
+            </div>
+            <h3 className="text-xl font-black mb-1" style={{ color: VERDE_REV.principal }}>¡Pedido guardado!</h3>
+            <p className="text-gray-600 text-sm mb-5">
+              El pedido de <strong className="uppercase">{pedidoRevGuardado.nombre}</strong> quedó guardado. Lo podés seguir editando cuando quieras.
+            </p>
+            <div className="space-y-2">
+              <button onClick={() => finLevantarAlModulo('pedido')} className="w-full py-3 rounded-lg font-bold text-white" style={{ backgroundColor: VERDE_REV.principal }}>
+                Hacer pedido de otro cliente
+              </button>
+              <button onClick={() => finLevantarAlModulo('estadisticas')} className="w-full py-3 rounded-lg font-bold border-2" style={{ borderColor: VERDE_REV.principal, color: VERDE_REV.principal }}>
+                Ir a estadísticas
+              </button>
+              <button onClick={finLevantarAlCatalogo} className="w-full py-2 text-gray-500 font-semibold">
+                Volver
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barra flotante en modo levantar pedido: total del cliente (lo que le cobra) */}
       {levantarPara && (() => {
         let unidades = 0, venta = 0;
@@ -3698,7 +3756,7 @@ function CatalogoApp() {
               <button onClick={() => setMostrarPedidoRev(true)} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg font-bold text-sm">
                 Ver mi pedido
               </button>
-              <button onClick={salirLevantarPedido} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg font-bold text-sm">
+              <button onClick={terminarLevantarPedido} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg font-bold text-sm">
                 Terminar
               </button>
             </div>
