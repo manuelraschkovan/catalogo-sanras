@@ -1484,16 +1484,14 @@ function resolverMargenFront(margenes, clienteFinal, articulo, marcaArt) {
   return null;
 }
 
-function SeccionLevantarPedido({ usuario, productos }) {
+function SeccionLevantarPedido({ usuario, productos, onLevantar }) {
+  const [vista, setVista] = useState('clientes'); // 'clientes' | 'estadisticas'
   const [clientes, setClientes] = useState([]);
   const [margenes, setMargenes] = useState([]);
-  const [items, setItems] = useState([]);        // [{idClienteFinal, codigoArticulo, cantidad}]
+  const [items, setItems] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
-
   const [buscaCliente, setBuscaCliente] = useState('');
-  const [clienteSel, setClienteSel] = useState(null);
-  const [busca, setBusca] = useState('');
 
   useEffect(() => { cargarTodo(); /* eslint-disable-next-line */ }, []);
 
@@ -1513,49 +1511,14 @@ function SeccionLevantarPedido({ usuario, productos }) {
     finally { setCargando(false); }
   }
 
-  // Costo (lista 5 con IVA) de un producto interno.
   const costoDe = (p) => p && p.precios ? (p.precios[5] || p.precios[1] || 0) : 0;
-
-  // Precio de venta de un producto para un cliente (costo + margen). Si no hay
-  // margen definido en ningún nivel, devolvemos el costo (margen 0).
   function precioVenta(p, idCliente) {
     const costo = costoDe(p);
     const pct = resolverMargenFront(margenes, String(idCliente), p.codigo, p.marca);
     return pct == null ? costo : Math.round(costo * (1 + pct / 100));
   }
 
-  // Cantidad actual de un artículo en el pedido de un cliente.
-  function cantDe(idCliente, codigo) {
-    const it = items.find(x => x.idClienteFinal === idCliente && x.codigoArticulo === codigo);
-    return it ? it.cantidad : 0;
-  }
-
-  async function fijarCantidad(idCliente, codigo, cantidad) {
-    const cant = Math.max(0, Number(cantidad) || 0);
-    // Optimista: actualizar el estado local ya
-    setItems(prev => {
-      const otros = prev.filter(x => !(x.idClienteFinal === idCliente && x.codigoArticulo === codigo));
-      return cant > 0 ? [...otros, { idClienteFinal: idCliente, codigoArticulo: codigo, cantidad: cant }] : otros;
-    });
-    try {
-      await fetch(`${BACKEND_URL}/api/revendedor/pedidos/item`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ token: usuario.token, idClienteFinal: idCliente, codigoArticulo: codigo, cantidad: cant })
-      });
-    } catch (e) { /* si falla, recargamos para resincronizar */ cargarTodo(); }
-  }
-
-  async function vaciarCliente(idCliente) {
-    setItems(prev => prev.filter(x => x.idClienteFinal !== idCliente));
-    try {
-      await fetch(`${BACKEND_URL}/api/revendedor/pedidos/vaciar-cliente`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ token: usuario.token, idClienteFinal: idCliente })
-      });
-    } catch (e) { cargarTodo(); }
-  }
-
-  // --- CONSOLIDADO EN VIVO (todos los clientes) ---
+  // Consolidado: suma todos los pedidos en preparación.
   const consolidado = React.useMemo(() => {
     let unidades = 0, costoTotal = 0, ventaTotal = 0;
     for (const it of items) {
@@ -1566,147 +1529,97 @@ function SeccionLevantarPedido({ usuario, productos }) {
       ventaTotal += precioVenta(p, it.idClienteFinal) * it.cantidad;
     }
     const ganancia = ventaTotal - costoTotal;
-    const pctGanancia = costoTotal > 0 ? (ganancia / costoTotal) * 100 : 0;
-    return { unidades, costoTotal, ventaTotal, ganancia, pctGanancia };
+    const pct = costoTotal > 0 ? (ganancia / costoTotal) * 100 : 0;
+    return { unidades, costoTotal, ventaTotal, ganancia, pct };
     // eslint-disable-next-line
   }, [items, margenes, productos]);
 
-  // Totales del cliente seleccionado
-  const totalesCliente = React.useMemo(() => {
-    if (!clienteSel) return null;
-    let unidades = 0, venta = 0;
-    for (const it of items.filter(x => x.idClienteFinal === clienteSel.id)) {
-      const p = (productos||[]).find(x => x.codigo === it.codigoArticulo);
-      if (!p) continue;
-      unidades += it.cantidad;
-      venta += precioVenta(p, clienteSel.id) * it.cantidad;
-    }
-    return { unidades, venta };
-    // eslint-disable-next-line
-  }, [items, clienteSel, margenes, productos]);
-
   const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR');
+  const itemsPorCliente = (id) => items.filter(x => x.idClienteFinal === id).length;
   const clientesFiltrados = buscaCliente.trim() ? clientes.filter(c => (c.nombre||'').toLowerCase().includes(buscaCliente.toLowerCase())) : clientes;
-  function coincide(p, texto) {
-    const norm = (s) => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-    const campos = norm(`${p.nombre||''} ${p.descripcionOriginal||''} ${p.codigo||''} ${p.marca||''}`);
-    return norm(texto).split(/\s+/).filter(Boolean).every(w => campos.includes(w));
-  }
-  const prodFiltrados = busca.trim() ? (productos||[]).filter(p => coincide(p, busca)).slice(0,25) : [];
-  const inputCls = "w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2";
+  const inputCls = "w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2";
 
   if (cargando) return <div className="p-8 text-center text-gray-500">Cargando…</div>;
 
-  // Cuántos clientes tienen algo cargado
-  const clientesConPedido = new Set(items.map(i => i.idClienteFinal)).size;
-
   return (
     <div className="flex-1 overflow-y-auto" style={{ backgroundColor: VERDE_REV.fondo }}>
-      {/* CONSOLIDADO EN VIVO — barra fija arriba */}
-      <div className="p-3 border-b sticky top-0 z-10" style={{ backgroundColor: VERDE_REV.principal, color: 'white' }}>
-        <div className="text-xs opacity-80 mb-1">Consolidado (lo que vas a pedirle a San-Ras)</div>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <div><span className="opacity-80">Unidades:</span> <strong>{consolidado.unidades}</strong></div>
-          <div><span className="opacity-80">Costo lista 5:</span> <strong>{fmt(consolidado.costoTotal)}</strong></div>
-          <div><span className="opacity-80">Venta:</span> <strong>{fmt(consolidado.ventaTotal)}</strong></div>
-          <div><span className="opacity-80">Ganancia:</span> <strong>{fmt(consolidado.ganancia)} ({consolidado.pctGanancia.toFixed(1)}%)</strong></div>
+      {/* Pestañas: elegir cliente / estadísticas */}
+      <div className="flex gap-2 p-3 border-b bg-white">
+        <button onClick={()=>setVista('clientes')} className="flex-1 py-2 rounded-lg text-sm font-bold"
+          style={vista==='clientes' ? { backgroundColor: VERDE_REV.principal, color:'white' } : { backgroundColor:'#f3f4f6', color:'#374151' }}>
+          Elegir cliente
+        </button>
+        <button onClick={()=>setVista('estadisticas')} className="flex-1 py-2 rounded-lg text-sm font-bold"
+          style={vista==='estadisticas' ? { backgroundColor: VERDE_REV.principal, color:'white' } : { backgroundColor:'#f3f4f6', color:'#374151' }}>
+          Estadísticas
+        </button>
+      </div>
+
+      {error && <div className="m-3 text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+
+      {vista === 'clientes' && (
+        <div className="p-4">
+          <p className="text-sm font-bold mb-2" style={{ color: VERDE_REV.principal }}>Elegí un cliente para tomarle el pedido</p>
+          <input value={buscaCliente} onChange={e=>setBuscaCliente(e.target.value)} placeholder="🔍 Buscar cliente…" className={inputCls + ' bg-white'} style={{ borderColor: VERDE_REV.claro }} />
+          <div className="mt-2 space-y-1">
+            {clientesFiltrados.map(c => {
+              const n = itemsPorCliente(c.id);
+              return (
+                <button key={c.id} onClick={()=>onLevantar(c)} className="block w-full text-left p-3 bg-white rounded-lg border hover:bg-gray-50">
+                  <span className="font-bold">{c.nombre}</span> <span className="text-gray-500 text-sm">· {c.localidad}</span>
+                  {n > 0 && <span className="ml-2 text-xs text-white px-2 py-0.5 rounded-full" style={{ backgroundColor: VERDE_REV.claro }}>{n} ítem{n!==1?'s':''}</span>}
+                </button>
+              );
+            })}
+            {clientes.length === 0 && <p className="text-xs text-gray-400 p-2">Primero cargá clientes en "Mis clientes".</p>}
+          </div>
         </div>
-        <div className="text-xs opacity-80 mt-1">{clientesConPedido} cliente{clientesConPedido!==1?'s':''} con pedido</div>
-      </div>
+      )}
 
-      <div className="p-4">
-        {error && <div className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
-
-        {/* Elegir cliente */}
-        {!clienteSel ? (
-          <div>
-            <p className="text-sm font-bold mb-2" style={{ color: VERDE_REV.principal }}>Elegí un cliente para tomarle el pedido</p>
-            <input value={buscaCliente} onChange={e=>setBuscaCliente(e.target.value)} placeholder="🔍 Buscar cliente…" className={inputCls + ' bg-white'} style={{ borderColor: VERDE_REV.claro }} />
-            <div className="mt-2 space-y-1">
-              {clientesFiltrados.map(c => {
-                const n = items.filter(x => x.idClienteFinal === c.id).length;
-                return (
-                  <button key={c.id} onClick={()=>{setClienteSel(c); setBusca('');}} className="block w-full text-left p-3 bg-white rounded-lg border hover:bg-gray-50">
-                    <span className="font-bold">{c.nombre}</span> <span className="text-gray-500 text-sm">· {c.localidad}</span>
-                    {n > 0 && <span className="ml-2 text-xs text-white px-2 py-0.5 rounded-full" style={{ backgroundColor: VERDE_REV.claro }}>{n} ítem{n!==1?'s':''}</span>}
-                  </button>
-                );
-              })}
-              {clientes.length === 0 && <p className="text-xs text-gray-400 p-2">Primero cargá clientes en "Mis clientes".</p>}
+      {vista === 'estadisticas' && (
+        <div className="p-4">
+          <p className="text-sm font-bold mb-2" style={{ color: VERDE_REV.principal }}>Consolidado (lo que vas a pedirle a San-Ras)</p>
+          <div className="bg-white rounded-xl p-4 space-y-2 border">
+            <div className="flex justify-between"><span className="text-gray-500">Unidades totales</span><strong>{consolidado.unidades}</strong></div>
+            <div className="flex justify-between"><span className="text-gray-500">Costo lista 5</span><strong>{fmt(consolidado.costoTotal)}</strong></div>
+            <div className="flex justify-between"><span className="text-gray-500">Venta a tus clientes</span><strong>{fmt(consolidado.ventaTotal)}</strong></div>
+            <div className="flex justify-between pt-2 border-t text-lg">
+              <span className="font-bold" style={{ color: VERDE_REV.principal }}>Ganancia</span>
+              <strong style={{ color: VERDE_REV.principal }}>{fmt(consolidado.ganancia)} ({consolidado.pct.toFixed(1)}%)</strong>
             </div>
           </div>
-        ) : (
-          <div>
-            {/* Cabecera del cliente elegido */}
-            <div className="flex items-center gap-2 mb-2">
-              <button onClick={()=>setClienteSel(null)} className="text-sm flex items-center gap-1" style={{ color: VERDE_REV.principal }}>
-                <ChevronLeft className="w-4 h-4" /> clientes
-              </button>
-              <span className="font-bold ml-1">{clienteSel.nombre}</span>
-              {totalesCliente && totalesCliente.unidades > 0 && (
-                <span className="ml-auto text-sm font-bold" style={{ color: VERDE_REV.principal }}>{totalesCliente.unidades} u · {fmt(totalesCliente.venta)}</span>
-              )}
-            </div>
+          <p className="text-xs text-gray-400 mt-2">Esta pantalla es privada: no la muestres al cliente.</p>
 
-            {/* Buscar producto */}
-            <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="🔍 Buscar producto para agregar…" className={inputCls + ' bg-white'} style={{ borderColor: VERDE_REV.claro }} />
-            <div className="mt-2 space-y-2">
-              {prodFiltrados.map(p => {
-                const cant = cantDe(clienteSel.id, p.codigo);
-                const pv = precioVenta(p, clienteSel.id);
-                return (
-                  <div key={p.codigo} className="bg-white rounded-lg border p-2">
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-gray-800 truncate">{p.nombre}</div>
-                        <div className="text-xs text-gray-400">{p.codigo} · {p.marca}</div>
-                        <div className="text-sm font-bold mt-0.5" style={{ color: VERDE_REV.principal }}>{fmt(pv)}</div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={()=>fijarCantidad(clienteSel.id, p.codigo, cant-1)} disabled={cant<=0} className="w-7 h-7 bg-gray-100 rounded flex items-center justify-center disabled:opacity-40"><Minus className="w-3 h-3" /></button>
-                        <input type="number" min="0" value={cant} onChange={e=>fijarCantidad(clienteSel.id, p.codigo, e.target.value)} onFocus={e=>e.target.select()} className="w-12 text-center border rounded py-1 text-sm" />
-                        <button onClick={()=>fijarCantidad(clienteSel.id, p.codigo, cant+1)} className="w-7 h-7 text-white rounded flex items-center justify-center" style={{ backgroundColor: VERDE_REV.principal }}><Plus className="w-3 h-3" /></button>
-                      </div>
+          {/* Desglose por cliente */}
+          {clientes.filter(c => itemsPorCliente(c.id) > 0).length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm font-bold mb-1" style={{ color: VERDE_REV.principal }}>Por cliente</p>
+              <div className="space-y-1">
+                {clientes.filter(c => itemsPorCliente(c.id) > 0).map(c => {
+                  const its = items.filter(x => x.idClienteFinal === c.id);
+                  let u=0, v=0;
+                  for (const it of its) { const p=(productos||[]).find(x=>x.codigo===it.codigoArticulo); if(!p) continue; u+=it.cantidad; v+=precioVenta(p,c.id)*it.cantidad; }
+                  return (
+                    <div key={c.id} className="flex items-center gap-2 bg-white rounded p-2 text-sm border">
+                      <span className="flex-1 font-bold truncate">{c.nombre}</span>
+                      <span className="text-gray-500">{u} u</span>
+                      <span className="font-bold">{fmt(v)}</span>
+                      <button onClick={()=>onLevantar(c)} className="text-xs font-bold" style={{ color: VERDE_REV.principal }}>abrir</button>
                     </div>
-                  </div>
-                );
-              })}
-              {busca.trim() && prodFiltrados.length === 0 && <p className="text-xs text-gray-400 p-2">No se encontraron productos.</p>}
-            </div>
-
-            {/* Lo que ya lleva este cliente */}
-            {items.filter(x=>x.idClienteFinal===clienteSel.id).length > 0 && (
-              <div className="mt-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm font-bold" style={{ color: VERDE_REV.principal }}>Pedido de {clienteSel.nombre}</p>
-                  <button onClick={()=>vaciarCliente(clienteSel.id)} className="ml-auto text-xs text-red-600">vaciar</button>
-                </div>
-                <div className="space-y-1">
-                  {items.filter(x=>x.idClienteFinal===clienteSel.id).map(it => {
-                    const p = (productos||[]).find(x=>x.codigo===it.codigoArticulo);
-                    if (!p) return null;
-                    const pv = precioVenta(p, clienteSel.id);
-                    return (
-                      <div key={it.codigoArticulo} className="flex items-center gap-2 bg-white rounded p-2 text-sm">
-                        <span className="flex-1 min-w-0 truncate">{p.nombre}</span>
-                        <span className="text-gray-500">x{it.cantidad}</span>
-                        <span className="font-bold">{fmt(pv * it.cantidad)}</span>
-                        <button onClick={()=>fijarCantidad(clienteSel.id, it.codigoArticulo, 0)} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    );
-                  })}
-                </div>
+                  );
+                })}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 
-function ModuloRevendedor({ usuario, productos, onCerrar }) {
+
+function ModuloRevendedor({ usuario, productos, onLevantar, onCerrar }) {
   const [seccion, setSeccion] = useState('menu');   // 'menu' | 'clientes'
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -1896,7 +1809,7 @@ function ModuloRevendedor({ usuario, productos, onCerrar }) {
                 <ChevronLeft className="w-4 h-4" /> Volver
               </button>
             </div>
-            <SeccionLevantarPedido usuario={usuario} productos={productos} />
+            <SeccionLevantarPedido usuario={usuario} productos={productos} onLevantar={onLevantar} />
           </>
         )}
 
@@ -2498,6 +2411,12 @@ function CatalogoApp() {
   const [mostrarDirecciones, setMostrarDirecciones] = useState(false);
   const [mostrarMenu, setMostrarMenu] = useState(false);
   const [mostrarAjustes, setMostrarAjustes] = useState(false);
+  // --- MODO LEVANTAR PEDIDO (R3, Camino A) ---
+  // Cuando levantarPara != null, el catálogo se transforma: muestra precios de
+  // venta del cliente del revendedor y las cantidades van a su pedido.
+  const [levantarPara, setLevantarPara] = useState(null);   // { id, nombre, localidad } o null
+  const [margenesRev, setMargenesRev] = useState([]);        // márgenes del revendedor
+  const [itemsPedidoRev, setItemsPedidoRev] = useState({});  // { codigoArticulo: cantidad } del cliente activo
   // Direcciones de envío para elegir en el carrito
   const [direccionesEnvio, setDireccionesEnvio] = useState([]);
   const [direccionElegida, setDireccionElegida] = useState(null); // id de la dirección elegida
@@ -2690,8 +2609,61 @@ function CatalogoApp() {
     }).format(precio);
   };
 
-  const obtenerPrecioUnitario = (producto) => producto.precios[listaActual] || 0;
+  // Precio unitario. En modo levantar pedido, es el precio de VENTA del cliente
+  // (costo lista 5 + margen por cascada). Fuera de ese modo, el precio normal.
+  const obtenerPrecioUnitario = (producto) => {
+    const costo = producto.precios[listaActual] || 0;
+    if (levantarPara) {
+      const pct = resolverMargenFront(margenesRev, String(levantarPara.id), producto.codigo, producto.marca);
+      return pct == null ? costo : Math.round(costo * (1 + pct / 100));
+    }
+    return costo;
+  };
   const obtenerPrecioBulto = (producto) => obtenerPrecioUnitario(producto) * (producto.unidadesPorBulto || 1);
+
+  // --- MODO LEVANTAR PEDIDO (R3) ---
+  // Entrar al modo para un cliente del revendedor: carga márgenes + su pedido.
+  const entrarLevantarPedido = async (cliente) => {
+    setMostrarRevendedor(false);
+    setLevantarPara(cliente);
+    try {
+      const [rM, rP] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/revendedor/margenes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) }),
+        fetch(`${BACKEND_URL}/api/revendedor/pedidos`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) })
+      ]);
+      const dM = await rM.json(); const dP = await rP.json();
+      if (dM.ok) setMargenesRev(dM.margenes || []);
+      if (dP.ok) {
+        const mapa = {};
+        (dP.items || []).filter(i => i.idClienteFinal === cliente.id).forEach(i => { mapa[i.codigoArticulo] = i.cantidad; });
+        setItemsPedidoRev(mapa);
+      }
+    } catch (e) { /* si falla, igual se puede navegar; queda vacío */ }
+  };
+
+  // Salir del modo levantar pedido (volver al catálogo normal del revendedor).
+  const salirLevantarPedido = () => {
+    setLevantarPara(null);
+    setItemsPedidoRev({});
+    setMostrarRevendedor(true);
+  };
+
+  // Fijar cantidad de un artículo en el pedido del cliente activo (guarda en backend).
+  const fijarCantidadRev = async (codigoArticulo, cantidad) => {
+    if (!levantarPara) return;
+    const cant = Math.max(0, Number(cantidad) || 0);
+    setItemsPedidoRev(prev => {
+      const n = { ...prev };
+      if (cant > 0) n[codigoArticulo] = cant; else delete n[codigoArticulo];
+      return n;
+    });
+    try {
+      await fetch(`${BACKEND_URL}/api/revendedor/pedidos/item`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: usuario.token, idClienteFinal: levantarPara.id, codigoArticulo, cantidad: cant })
+      });
+    } catch (e) { /* mejor esfuerzo */ }
+  };
 
   const parsearListas1a4 = async (archivo) => {
     const buffer = await archivo.arrayBuffer();
@@ -2965,8 +2937,13 @@ function CatalogoApp() {
   };
 
   const establecerCantidad = (producto, unidad, cantidad) => {
-    const clave = claveCarrito(producto.id, unidad);
     const cantNum = parseInt(cantidad) || 0;
+    // En modo levantar pedido: la cantidad va al pedido del cliente, no al carrito.
+    if (levantarPara) {
+      fijarCantidadRev(producto.codigo, cantNum);
+      return;
+    }
+    const clave = claveCarrito(producto.id, unidad);
     setCarrito(prev => {
       const nuevoCarrito = { ...prev };
       if (cantNum <= 0) delete nuevoCarrito[clave];
@@ -3127,18 +3104,34 @@ function CatalogoApp() {
                 <LogoSanRas size="normal" />
               </div>
               <div>
-                <h1 className="text-lg sm:text-xl font-black leading-tight tracking-tight" style={{ fontFamily: 'Impact, "Arial Black", sans-serif', letterSpacing: '-0.02em' }}>
-                  DISTRIBUIDORA SAN-RAS SA
-                </h1>
-                <p className="text-xs text-blue-100">
-                  {esPreview ? 'Modo previsualización · sin precios' : `${usuario.nombre} · ${NOMBRES_LISTAS[listaActual]}`}
-                </p>
+                {levantarPara ? (
+                  <>
+                    <h1 className="text-lg sm:text-2xl font-black leading-tight tracking-tight uppercase" style={{ fontFamily: 'Impact, "Arial Black", sans-serif', letterSpacing: '-0.02em' }}>
+                      {levantarPara.nombre}
+                    </h1>
+                    <p className="text-xs text-blue-100">Pedido de tu cliente · {levantarPara.localidad || ''}</p>
+                  </>
+                ) : (
+                  <>
+                    <h1 className="text-lg sm:text-xl font-black leading-tight tracking-tight" style={{ fontFamily: 'Impact, "Arial Black", sans-serif', letterSpacing: '-0.02em' }}>
+                      DISTRIBUIDORA SAN-RAS SA
+                    </h1>
+                    <p className="text-xs text-blue-100">
+                      {esPreview ? 'Modo previsualización · sin precios' : `${usuario.nombre} · ${NOMBRES_LISTAS[listaActual]}`}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-1">
               {esPreview ? (
                 <button onClick={() => setUsuario(null)} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition-colors text-sm font-bold">
                   Ingresar
+                </button>
+              ) : levantarPara ? (
+                // En modo levantar pedido: botón visible para salir/cambiar de cliente
+                <button onClick={salirLevantarPedido} className="bg-white/25 hover:bg-white/40 px-3 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-1">
+                  <X className="w-4 h-4" /> Salir
                 </button>
               ) : (
               <>
@@ -3405,7 +3398,10 @@ function CatalogoApp() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     {grupo.items.map(producto => {
                       const precioUnit = obtenerPrecioUnitario(producto);
-                      const cantUnidad = carrito[claveCarrito(producto.id, 'unidad')]?.cantidad || 0;
+                      // En modo levantar pedido la cantidad sale del pedido del cliente.
+                      const cantUnidad = levantarPara
+                        ? (itemsPedidoRev[producto.codigo] || 0)
+                        : (carrito[claveCarrito(producto.id, 'unidad')]?.cantidad || 0);
 
                       return (
                         <div key={producto.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
@@ -3574,7 +3570,7 @@ function CatalogoApp() {
       )}
 
       {mostrarRevendedor && usuario && usuario.lista === 5 && (
-        <ModuloRevendedor usuario={usuario} productos={productos} onCerrar={() => setMostrarRevendedor(false)} />
+        <ModuloRevendedor usuario={usuario} productos={productos} onLevantar={entrarLevantarPedido} onCerrar={() => setMostrarRevendedor(false)} />
       )}
 
       {mostrarDirecciones && usuario && puedeElegirEnvio && (
@@ -3647,6 +3643,30 @@ function CatalogoApp() {
           </div>
         </div>
       )}
+
+      {/* Barra flotante en modo levantar pedido: total del cliente (lo que le cobra) */}
+      {levantarPara && (() => {
+        let unidades = 0, venta = 0;
+        for (const [codigo, cant] of Object.entries(itemsPedidoRev)) {
+          const p = productos.find(x => x.codigo === codigo);
+          if (!p) continue;
+          unidades += cant;
+          venta += obtenerPrecioUnitario(p) * cant;
+        }
+        return (
+          <div className="fixed bottom-0 left-0 right-0 z-30 border-t shadow-2xl" style={{ backgroundColor: COLORS.azul, color: 'white' }}>
+            <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+              <div className="flex-1">
+                <div className="text-xs opacity-80">Pedido de {levantarPara.nombre}</div>
+                <div className="font-black text-lg">{unidades} u · ${Math.round(venta).toLocaleString('es-AR')}</div>
+              </div>
+              <button onClick={salirLevantarPedido} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg font-bold">
+                Terminar
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {mostrarCarrito && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
