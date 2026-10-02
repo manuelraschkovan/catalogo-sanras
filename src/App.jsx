@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Search, Upload, Package, X, Download, ShoppingCart, Plus, Minus, Trash2, Send, LogOut, Truck, AlertCircle, Users, Settings, FileSpreadsheet, Check, Pencil, Home, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Upload, Package, X, Download, ShoppingCart, Plus, Minus, Trash2, Send, LogOut, Truck, AlertCircle, Users, Settings, FileSpreadsheet, Check, Pencil, Home, ChevronDown, ChevronLeft, ChevronRight, Menu, KeyRound, ClipboardList } from 'lucide-react';
 
 // Paleta de colores Distribuidora San-Ras SA
 const COLORS = {
@@ -9,6 +9,15 @@ const COLORS = {
   azulClaro: '#2d3a8a',
   gris: '#9ca3af',
   grisClaro: '#e5e7eb',
+};
+
+// Paleta del MODO REVENDEDOR: verde esmeralda/teal. Distinto del azul San-Ras
+// para que el revendedor note al instante que está en su módulo (y evoca ganancia).
+const VERDE_REV = {
+  principal: '#0f766e',   // teal 700
+  oscuro:    '#115e59',   // teal 800
+  claro:     '#14b8a6',   // teal 500
+  fondo:     '#f0fdfa',   // teal 50
 };
 
 // URL del logo desde Cloudinary
@@ -1448,6 +1457,255 @@ function SeccionMargenes({ usuario, productos }) {
 }
 
 
+// ============================================================
+//  R3 — Levantar pedido a un cliente, con consolidado en vivo
+// ============================================================
+// Resuelve el margen (%) de un artículo para un cliente según la cascada de
+// 6 niveles, usando la lista de márgenes ya cargada. Devuelve el % o null.
+function resolverMargenFront(margenes, clienteFinal, articulo, marcaArt) {
+  const cf = String(clienteFinal || '');
+  const get = (cli, niv, clv) => {
+    const m = margenes.find(x => x.clienteFinal === (cli||'') && x.nivel === niv && x.clave === (clv||''));
+    return m ? m.porcentaje : null;
+  };
+  const busquedas = [
+    ['articulo', String(articulo||''), cf],   // 6
+    ['marca',    String(marcaArt||''), cf],    // 5
+    ['general',  '',                   cf],    // 4
+    ['articulo', String(articulo||''), ''],    // 3
+    ['marca',    String(marcaArt||''), ''],    // 2
+    ['general',  '',                   ''],     // 1
+  ];
+  for (const [niv, clv, cli] of busquedas) {
+    if ((niv === 'marca' || niv === 'articulo') && !clv) continue;
+    const v = get(cli, niv, clv);
+    if (v != null) return v;
+  }
+  return null;
+}
+
+function SeccionLevantarPedido({ usuario, productos }) {
+  const [clientes, setClientes] = useState([]);
+  const [margenes, setMargenes] = useState([]);
+  const [items, setItems] = useState([]);        // [{idClienteFinal, codigoArticulo, cantidad}]
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  const [buscaCliente, setBuscaCliente] = useState('');
+  const [clienteSel, setClienteSel] = useState(null);
+  const [busca, setBusca] = useState('');
+
+  useEffect(() => { cargarTodo(); /* eslint-disable-next-line */ }, []);
+
+  async function cargarTodo() {
+    setCargando(true); setError('');
+    try {
+      const [rC, rM, rP] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/revendedor/clientes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) }),
+        fetch(`${BACKEND_URL}/api/revendedor/margenes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) }),
+        fetch(`${BACKEND_URL}/api/revendedor/pedidos`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) })
+      ]);
+      const dC = await rC.json(); const dM = await rM.json(); const dP = await rP.json();
+      if (dC.ok) setClientes(dC.clientes || []);
+      if (dM.ok) setMargenes(dM.margenes || []);
+      if (dP.ok) setItems(dP.items || []);
+    } catch (e) { setError('No se pudo cargar.'); }
+    finally { setCargando(false); }
+  }
+
+  // Costo (lista 5 con IVA) de un producto interno.
+  const costoDe = (p) => p && p.precios ? (p.precios[5] || p.precios[1] || 0) : 0;
+
+  // Precio de venta de un producto para un cliente (costo + margen). Si no hay
+  // margen definido en ningún nivel, devolvemos el costo (margen 0).
+  function precioVenta(p, idCliente) {
+    const costo = costoDe(p);
+    const pct = resolverMargenFront(margenes, String(idCliente), p.codigo, p.marca);
+    return pct == null ? costo : Math.round(costo * (1 + pct / 100));
+  }
+
+  // Cantidad actual de un artículo en el pedido de un cliente.
+  function cantDe(idCliente, codigo) {
+    const it = items.find(x => x.idClienteFinal === idCliente && x.codigoArticulo === codigo);
+    return it ? it.cantidad : 0;
+  }
+
+  async function fijarCantidad(idCliente, codigo, cantidad) {
+    const cant = Math.max(0, Number(cantidad) || 0);
+    // Optimista: actualizar el estado local ya
+    setItems(prev => {
+      const otros = prev.filter(x => !(x.idClienteFinal === idCliente && x.codigoArticulo === codigo));
+      return cant > 0 ? [...otros, { idClienteFinal: idCliente, codigoArticulo: codigo, cantidad: cant }] : otros;
+    });
+    try {
+      await fetch(`${BACKEND_URL}/api/revendedor/pedidos/item`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: usuario.token, idClienteFinal: idCliente, codigoArticulo: codigo, cantidad: cant })
+      });
+    } catch (e) { /* si falla, recargamos para resincronizar */ cargarTodo(); }
+  }
+
+  async function vaciarCliente(idCliente) {
+    setItems(prev => prev.filter(x => x.idClienteFinal !== idCliente));
+    try {
+      await fetch(`${BACKEND_URL}/api/revendedor/pedidos/vaciar-cliente`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: usuario.token, idClienteFinal: idCliente })
+      });
+    } catch (e) { cargarTodo(); }
+  }
+
+  // --- CONSOLIDADO EN VIVO (todos los clientes) ---
+  const consolidado = React.useMemo(() => {
+    let unidades = 0, costoTotal = 0, ventaTotal = 0;
+    for (const it of items) {
+      const p = (productos||[]).find(x => x.codigo === it.codigoArticulo);
+      if (!p) continue;
+      unidades += it.cantidad;
+      costoTotal += costoDe(p) * it.cantidad;
+      ventaTotal += precioVenta(p, it.idClienteFinal) * it.cantidad;
+    }
+    const ganancia = ventaTotal - costoTotal;
+    const pctGanancia = costoTotal > 0 ? (ganancia / costoTotal) * 100 : 0;
+    return { unidades, costoTotal, ventaTotal, ganancia, pctGanancia };
+    // eslint-disable-next-line
+  }, [items, margenes, productos]);
+
+  // Totales del cliente seleccionado
+  const totalesCliente = React.useMemo(() => {
+    if (!clienteSel) return null;
+    let unidades = 0, venta = 0;
+    for (const it of items.filter(x => x.idClienteFinal === clienteSel.id)) {
+      const p = (productos||[]).find(x => x.codigo === it.codigoArticulo);
+      if (!p) continue;
+      unidades += it.cantidad;
+      venta += precioVenta(p, clienteSel.id) * it.cantidad;
+    }
+    return { unidades, venta };
+    // eslint-disable-next-line
+  }, [items, clienteSel, margenes, productos]);
+
+  const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR');
+  const clientesFiltrados = buscaCliente.trim() ? clientes.filter(c => (c.nombre||'').toLowerCase().includes(buscaCliente.toLowerCase())) : clientes;
+  function coincide(p, texto) {
+    const norm = (s) => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const campos = norm(`${p.nombre||''} ${p.descripcionOriginal||''} ${p.codigo||''} ${p.marca||''}`);
+    return norm(texto).split(/\s+/).filter(Boolean).every(w => campos.includes(w));
+  }
+  const prodFiltrados = busca.trim() ? (productos||[]).filter(p => coincide(p, busca)).slice(0,25) : [];
+  const inputCls = "w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2";
+
+  if (cargando) return <div className="p-8 text-center text-gray-500">Cargando…</div>;
+
+  // Cuántos clientes tienen algo cargado
+  const clientesConPedido = new Set(items.map(i => i.idClienteFinal)).size;
+
+  return (
+    <div className="flex-1 overflow-y-auto" style={{ backgroundColor: VERDE_REV.fondo }}>
+      {/* CONSOLIDADO EN VIVO — barra fija arriba */}
+      <div className="p-3 border-b sticky top-0 z-10" style={{ backgroundColor: VERDE_REV.principal, color: 'white' }}>
+        <div className="text-xs opacity-80 mb-1">Consolidado (lo que vas a pedirle a San-Ras)</div>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div><span className="opacity-80">Unidades:</span> <strong>{consolidado.unidades}</strong></div>
+          <div><span className="opacity-80">Costo lista 5:</span> <strong>{fmt(consolidado.costoTotal)}</strong></div>
+          <div><span className="opacity-80">Venta:</span> <strong>{fmt(consolidado.ventaTotal)}</strong></div>
+          <div><span className="opacity-80">Ganancia:</span> <strong>{fmt(consolidado.ganancia)} ({consolidado.pctGanancia.toFixed(1)}%)</strong></div>
+        </div>
+        <div className="text-xs opacity-80 mt-1">{clientesConPedido} cliente{clientesConPedido!==1?'s':''} con pedido</div>
+      </div>
+
+      <div className="p-4">
+        {error && <div className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+
+        {/* Elegir cliente */}
+        {!clienteSel ? (
+          <div>
+            <p className="text-sm font-bold mb-2" style={{ color: VERDE_REV.principal }}>Elegí un cliente para tomarle el pedido</p>
+            <input value={buscaCliente} onChange={e=>setBuscaCliente(e.target.value)} placeholder="🔍 Buscar cliente…" className={inputCls + ' bg-white'} style={{ borderColor: VERDE_REV.claro }} />
+            <div className="mt-2 space-y-1">
+              {clientesFiltrados.map(c => {
+                const n = items.filter(x => x.idClienteFinal === c.id).length;
+                return (
+                  <button key={c.id} onClick={()=>{setClienteSel(c); setBusca('');}} className="block w-full text-left p-3 bg-white rounded-lg border hover:bg-gray-50">
+                    <span className="font-bold">{c.nombre}</span> <span className="text-gray-500 text-sm">· {c.localidad}</span>
+                    {n > 0 && <span className="ml-2 text-xs text-white px-2 py-0.5 rounded-full" style={{ backgroundColor: VERDE_REV.claro }}>{n} ítem{n!==1?'s':''}</span>}
+                  </button>
+                );
+              })}
+              {clientes.length === 0 && <p className="text-xs text-gray-400 p-2">Primero cargá clientes en "Mis clientes".</p>}
+            </div>
+          </div>
+        ) : (
+          <div>
+            {/* Cabecera del cliente elegido */}
+            <div className="flex items-center gap-2 mb-2">
+              <button onClick={()=>setClienteSel(null)} className="text-sm flex items-center gap-1" style={{ color: VERDE_REV.principal }}>
+                <ChevronLeft className="w-4 h-4" /> clientes
+              </button>
+              <span className="font-bold ml-1">{clienteSel.nombre}</span>
+              {totalesCliente && totalesCliente.unidades > 0 && (
+                <span className="ml-auto text-sm font-bold" style={{ color: VERDE_REV.principal }}>{totalesCliente.unidades} u · {fmt(totalesCliente.venta)}</span>
+              )}
+            </div>
+
+            {/* Buscar producto */}
+            <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="🔍 Buscar producto para agregar…" className={inputCls + ' bg-white'} style={{ borderColor: VERDE_REV.claro }} />
+            <div className="mt-2 space-y-2">
+              {prodFiltrados.map(p => {
+                const cant = cantDe(clienteSel.id, p.codigo);
+                const pv = precioVenta(p, clienteSel.id);
+                return (
+                  <div key={p.codigo} className="bg-white rounded-lg border p-2">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-gray-800 truncate">{p.nombre}</div>
+                        <div className="text-xs text-gray-400">{p.codigo} · {p.marca}</div>
+                        <div className="text-sm font-bold mt-0.5" style={{ color: VERDE_REV.principal }}>{fmt(pv)}</div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={()=>fijarCantidad(clienteSel.id, p.codigo, cant-1)} disabled={cant<=0} className="w-7 h-7 bg-gray-100 rounded flex items-center justify-center disabled:opacity-40"><Minus className="w-3 h-3" /></button>
+                        <input type="number" min="0" value={cant} onChange={e=>fijarCantidad(clienteSel.id, p.codigo, e.target.value)} onFocus={e=>e.target.select()} className="w-12 text-center border rounded py-1 text-sm" />
+                        <button onClick={()=>fijarCantidad(clienteSel.id, p.codigo, cant+1)} className="w-7 h-7 text-white rounded flex items-center justify-center" style={{ backgroundColor: VERDE_REV.principal }}><Plus className="w-3 h-3" /></button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {busca.trim() && prodFiltrados.length === 0 && <p className="text-xs text-gray-400 p-2">No se encontraron productos.</p>}
+            </div>
+
+            {/* Lo que ya lleva este cliente */}
+            {items.filter(x=>x.idClienteFinal===clienteSel.id).length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm font-bold" style={{ color: VERDE_REV.principal }}>Pedido de {clienteSel.nombre}</p>
+                  <button onClick={()=>vaciarCliente(clienteSel.id)} className="ml-auto text-xs text-red-600">vaciar</button>
+                </div>
+                <div className="space-y-1">
+                  {items.filter(x=>x.idClienteFinal===clienteSel.id).map(it => {
+                    const p = (productos||[]).find(x=>x.codigo===it.codigoArticulo);
+                    if (!p) return null;
+                    const pv = precioVenta(p, clienteSel.id);
+                    return (
+                      <div key={it.codigoArticulo} className="flex items-center gap-2 bg-white rounded p-2 text-sm">
+                        <span className="flex-1 min-w-0 truncate">{p.nombre}</span>
+                        <span className="text-gray-500">x{it.cantidad}</span>
+                        <span className="font-bold">{fmt(pv * it.cantidad)}</span>
+                        <button onClick={()=>fijarCantidad(clienteSel.id, it.codigoArticulo, 0)} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function ModuloRevendedor({ usuario, productos, onCerrar }) {
   const [seccion, setSeccion] = useState('menu');   // 'menu' | 'clientes'
   const [clientes, setClientes] = useState([]);
@@ -1571,54 +1829,75 @@ function ModuloRevendedor({ usuario, productos, onCerrar }) {
 
   const inputCls = "w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
 
+  const tituloSeccion = seccion === 'menu' ? 'MÓDULO REVENDEDOR'
+    : seccion === 'clientes' ? 'MIS CLIENTES'
+    : seccion === 'margenes' ? 'MÁRGENES'
+    : seccion === 'pedido' ? 'LEVANTAR PEDIDO' : 'MÓDULO REVENDEDOR';
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col">
-        {/* Encabezado */}
-        <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
+      <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col" style={{ boxShadow: `0 0 0 3px ${VERDE_REV.claro}` }}>
+        {/* Encabezado — VERDE para distinguir el modo revendedor */}
+        <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: VERDE_REV.principal, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
           <h2 className="text-xl font-black flex items-center gap-2" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>
             <Users className="w-5 h-5" />
-            {seccion === 'menu' ? 'MÓDULO REVENDEDOR' : seccion === 'clientes' ? 'MIS CLIENTES' : 'MÁRGENES'}
+            {tituloSeccion}
           </h2>
           <button onClick={onCerrar}><X className="w-6 h-6" /></button>
         </div>
 
         {/* MENÚ del módulo */}
         {seccion === 'menu' && (
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            <p className="text-sm text-gray-500 mb-2">Elegí qué querés hacer:</p>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ backgroundColor: VERDE_REV.fondo }}>
+            <p className="text-sm text-gray-600 mb-2">Elegí qué querés hacer:</p>
             <button onClick={() => setSeccion('clientes')}
-              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 hover:bg-gray-50 transition-colors text-left"
-              style={{ borderColor: COLORS.azul }}>
-              <Users className="w-6 h-6" style={{ color: COLORS.azul }} />
+              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 bg-white hover:bg-gray-50 transition-colors text-left"
+              style={{ borderColor: VERDE_REV.principal }}>
+              <Users className="w-6 h-6" style={{ color: VERDE_REV.principal }} />
               <div>
-                <div className="font-bold" style={{ color: COLORS.azul }}>Mis clientes</div>
+                <div className="font-bold" style={{ color: VERDE_REV.principal }}>Mis clientes</div>
                 <div className="text-xs text-gray-500">Cargá y administrá tu cartera de clientes</div>
               </div>
             </button>
             <button onClick={() => setSeccion('margenes')}
-              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 hover:bg-gray-50 transition-colors text-left"
-              style={{ borderColor: COLORS.azul }}>
-              <Settings className="w-6 h-6" style={{ color: COLORS.azul }} />
+              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 bg-white hover:bg-gray-50 transition-colors text-left"
+              style={{ borderColor: VERDE_REV.principal }}>
+              <Settings className="w-6 h-6" style={{ color: VERDE_REV.principal }} />
               <div>
-                <div className="font-bold" style={{ color: COLORS.azul }}>Márgenes</div>
+                <div className="font-bold" style={{ color: VERDE_REV.principal }}>Márgenes</div>
                 <div className="text-xs text-gray-500">Definí tus ganancias por producto, marca o cliente</div>
               </div>
             </button>
-            {[
-              ['Levantar pedido', 'Tomá pedidos a tus clientes con tu precio'],
-              ['Consolidado y pedido a San-Ras', 'Juntá los pedidos y enviálos'],
-            ].map(([t, d]) => (
-              <div key={t} className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 opacity-60 text-left">
-                <Package className="w-6 h-6 text-gray-400" />
-                <div>
-                  <div className="font-bold text-gray-500">{t}</div>
-                  <div className="text-xs text-gray-400">{d}</div>
-                </div>
-                <span className="ml-auto text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Próximamente</span>
+            <button onClick={() => setSeccion('pedido')}
+              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 bg-white hover:bg-gray-50 transition-colors text-left"
+              style={{ borderColor: VERDE_REV.principal }}>
+              <ClipboardList className="w-6 h-6" style={{ color: VERDE_REV.principal }} />
+              <div>
+                <div className="font-bold" style={{ color: VERDE_REV.principal }}>Levantar pedido</div>
+                <div className="text-xs text-gray-500">Tomá pedidos a tus clientes con tu precio</div>
               </div>
-            ))}
+            </button>
+            <div className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 opacity-60 text-left bg-white">
+              <Package className="w-6 h-6 text-gray-400" />
+              <div>
+                <div className="font-bold text-gray-500">Consolidado y pedido a San-Ras</div>
+                <div className="text-xs text-gray-400">Juntá los pedidos y enviálos</div>
+              </div>
+              <span className="ml-auto text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Próximamente</span>
+            </div>
           </div>
+        )}
+
+        {/* SECCIÓN levantar pedido (R3) */}
+        {seccion === 'pedido' && (
+          <>
+            <div className="flex items-center gap-2 p-3 border-b">
+              <button onClick={() => setSeccion('menu')} className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
+                <ChevronLeft className="w-4 h-4" /> Volver
+              </button>
+            </div>
+            <SeccionLevantarPedido usuario={usuario} productos={productos} />
+          </>
         )}
 
         {/* SECCIÓN clientes */}
@@ -2138,6 +2417,64 @@ function PanelAdmin() {
   );
 }
 
+// ============================================================
+//  AJUSTES — cambiar contraseña
+// ============================================================
+function Ajustes({ usuario, onCerrar }) {
+  const [actual, setActual] = useState('');
+  const [nueva, setNueva] = useState('');
+  const [nueva2, setNueva2] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const [ok, setOk] = useState(false);
+
+  async function guardar() {
+    setError(''); setOk(false);
+    if (!actual) { setError('Ingresá tu contraseña actual.'); return; }
+    if (nueva.length < 4) { setError('La nueva contraseña debe tener al menos 4 caracteres.'); return; }
+    if (nueva !== nueva2) { setError('Las contraseñas nuevas no coinciden.'); return; }
+    setGuardando(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/auth/cambiar-password`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: usuario.token, passwordActual: actual, passwordNueva: nueva })
+      });
+      const data = await r.json();
+      if (data.ok) { setOk(true); setActual(''); setNueva(''); setNueva2(''); }
+      else setError(data.motivo || 'No se pudo cambiar la contraseña.');
+    } catch (e) { setError('No se pudo conectar.'); }
+    finally { setGuardando(false); }
+  }
+
+  const inputCls = "w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-sm w-full flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white', borderRadius: '0.75rem 0.75rem 0 0' }}>
+          <h2 className="text-xl font-black flex items-center gap-2" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>
+            <Settings className="w-5 h-5" /> AJUSTES
+          </h2>
+          <button onClick={onCerrar}><X className="w-6 h-6" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-sm font-bold flex items-center gap-2" style={{ color: COLORS.azul }}>
+            <KeyRound className="w-4 h-4" /> Cambiar contraseña
+          </p>
+          {ok && <div className="text-sm text-green-700 bg-green-50 p-2 rounded">Contraseña cambiada correctamente.</div>}
+          {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+          <input type="password" value={actual} onChange={e => setActual(e.target.value)} placeholder="Contraseña actual" className={inputCls} />
+          <input type="password" value={nueva} onChange={e => setNueva(e.target.value)} placeholder="Nueva contraseña" className={inputCls} />
+          <input type="password" value={nueva2} onChange={e => setNueva2(e.target.value)} placeholder="Repetí la nueva contraseña" className={inputCls} />
+          <button onClick={guardar} disabled={guardando} className="w-full py-3 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>
+            {guardando ? 'Guardando…' : 'Cambiar contraseña'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CatalogoApp() {
   const [usuario, setUsuario] = useState(null);
   const [productos, setProductos] = useState([]);
@@ -2159,6 +2496,8 @@ function CatalogoApp() {
   const [mostrarMisPedidos, setMostrarMisPedidos] = useState(false);
   const [mostrarRevendedor, setMostrarRevendedor] = useState(false);
   const [mostrarDirecciones, setMostrarDirecciones] = useState(false);
+  const [mostrarMenu, setMostrarMenu] = useState(false);
+  const [mostrarAjustes, setMostrarAjustes] = useState(false);
   // Direcciones de envío para elegir en el carrito
   const [direccionesEnvio, setDireccionesEnvio] = useState([]);
   const [direccionElegida, setDireccionElegida] = useState(null); // id de la dirección elegida
@@ -2803,27 +3142,16 @@ function CatalogoApp() {
                 </button>
               ) : (
               <>
+              {/* Carrito: queda afuera del menú, siempre visible */}
               <button onClick={() => setMostrarCarrito(true)} className="relative bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
                 <ShoppingCart className="w-5 h-5" />
                 {cantidadItemsCarrito > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{cantidadItemsCarrito}</span>
                 )}
               </button>
-              {usuario && usuario.lista === 5 && (
-                <button onClick={() => setMostrarRevendedor(true)} title="Módulo Revendedor" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
-                  <Users className="w-5 h-5" />
-                </button>
-              )}
-              {puedeElegirEnvio && (
-                <button onClick={() => setMostrarDirecciones(true)} title="Mis direcciones" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
-                  <Home className="w-5 h-5" />
-                </button>
-              )}
-              <button onClick={abrirMisPedidos} title="Mis pedidos" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
-                <Package className="w-5 h-5" />
-              </button>
-              <button onClick={cerrarSesion} className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
-                <LogOut className="w-5 h-5" />
+              {/* Menú (tres líneas) */}
+              <button onClick={() => setMostrarMenu(true)} title="Menú" className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
+                <Menu className="w-5 h-5" />
               </button>
               </>
               )}
@@ -3195,6 +3523,56 @@ function CatalogoApp() {
       )}
 
       {/* Mis pedidos (histórico) */}
+      {/* MENÚ lateral (hamburguesa) */}
+      {mostrarMenu && usuario && !esPreview && (
+        <div className="fixed inset-0 z-50" onClick={() => setMostrarMenu(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="absolute left-0 top-0 bottom-0 w-72 max-w-[82%] bg-white shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b" style={{ backgroundColor: COLORS.azul, color: 'white' }}>
+              <div className="flex items-center justify-between">
+                <span className="font-black" style={{ fontFamily: 'Impact, "Arial Black", sans-serif' }}>MENÚ</span>
+                <button onClick={() => setMostrarMenu(false)}><X className="w-6 h-6" /></button>
+              </div>
+              <div className="text-xs mt-1 opacity-80">{usuario.nombre} · {NOMBRES_LISTAS[listaActual] || ''}</div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              <button onClick={() => { setMostrarMenu(false); abrirMisPedidos(); }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left">
+                <Package className="w-5 h-5" style={{ color: COLORS.azul }} /> <span className="font-semibold text-gray-800">Mis pedidos</span>
+              </button>
+              {puedeElegirEnvio && (
+                <button onClick={() => { setMostrarMenu(false); setMostrarDirecciones(true); }}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left">
+                  <Home className="w-5 h-5" style={{ color: COLORS.azul }} /> <span className="font-semibold text-gray-800">Mis direcciones</span>
+                </button>
+              )}
+              {usuario.lista === 5 && (
+                <button onClick={() => { setMostrarMenu(false); setMostrarRevendedor(true); }}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left"
+                  style={{ backgroundColor: '#ecfdf5' }}>
+                  <Users className="w-5 h-5" style={{ color: VERDE_REV.principal }} /> <span className="font-bold" style={{ color: VERDE_REV.principal }}>Módulo Revendedor</span>
+                </button>
+              )}
+              <button onClick={() => { setMostrarMenu(false); setMostrarAjustes(true); }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left">
+                <Settings className="w-5 h-5" style={{ color: COLORS.azul }} /> <span className="font-semibold text-gray-800">Ajustes</span>
+              </button>
+            </div>
+            <div className="p-2 border-t">
+              <button onClick={() => { setMostrarMenu(false); cerrarSesion(); }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-red-50 text-left">
+                <LogOut className="w-5 h-5 text-red-600" /> <span className="font-semibold text-red-600">Cerrar sesión</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AJUSTES (cambiar contraseña) */}
+      {mostrarAjustes && usuario && (
+        <Ajustes usuario={usuario} onCerrar={() => setMostrarAjustes(false)} />
+      )}
+
       {mostrarRevendedor && usuario && usuario.lista === 5 && (
         <ModuloRevendedor usuario={usuario} productos={productos} onCerrar={() => setMostrarRevendedor(false)} />
       )}
