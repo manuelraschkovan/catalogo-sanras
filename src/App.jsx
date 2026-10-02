@@ -43,6 +43,7 @@ const convertirProductoBackend = (p, indice) => {
   return {
     id: indice + 1,
     nombre: p.descripcion || '',
+    descripcionOriginal: p.descripcionOriginal || '',
     categoria: detectarCategoriaEspecial(descParaCategoria, p.marca) || 'Otros',
     codigo: p.codigo || '',
     marca: p.marca || '',
@@ -1307,15 +1308,25 @@ function SeccionMargenes({ usuario, productos }) {
     const s = new Set((productos||[]).map(p => p.marca).filter(Boolean));
     return Array.from(s).sort((a,b)=>a.localeCompare(b,'es'));
   }, [productos]);
-  function costoDeMarca(marca) { const p = (productos||[]).find(x => x.marca === marca && x.precio > 0); return p ? p.precio : 1000; }
+  function costoDeMarca(marca) { const p = (productos||[]).find(x => x.marca === marca && costoDe(x) > 0); return p ? costoDe(p) : 1000; }
 
   const marcasFiltradas = buscaMarca.trim() ? marcas.filter(m => m.toLowerCase().includes(buscaMarca.toLowerCase())).slice(0,10) : [];
   const marcasFiltradasC = buscaMarcaC.trim() ? marcas.filter(m => m.toLowerCase().includes(buscaMarcaC.toLowerCase())).slice(0,10) : [];
-  const artFiltrados = buscaArt.trim() ? (productos||[]).filter(p => (p.descripcion||'').toLowerCase().includes(buscaArt.toLowerCase()) || (p.codigo||'').toLowerCase().includes(buscaArt.toLowerCase())).slice(0,15) : [];
-  const artFiltradosC = buscaArtC.trim() ? (productos||[]).filter(p => (p.descripcion||'').toLowerCase().includes(buscaArtC.toLowerCase()) || (p.codigo||'').toLowerCase().includes(buscaArtC.toLowerCase())).slice(0,15) : [];
+  // Búsqueda de artículos: por nombre (limpio Y original), código o marca,
+  // ignorando acentos y aceptando varias palabras (todas deben aparecer).
+  function coincideArticulo(p, texto) {
+    const norm = (s) => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const campos = norm(`${p.nombre||''} ${p.descripcionOriginal||''} ${p.codigo||''} ${p.marca||''}`);
+    const palabras = norm(texto).split(/\s+/).filter(Boolean);
+    return palabras.every(w => campos.includes(w));
+  }
+  // Costo (precio de lista 5, con IVA) de un producto interno.
+  function costoDe(p) { return p && p.precios ? (p.precios[5] || p.precios[1] || 0) : 0; }
+  const artFiltrados = buscaArt.trim() ? (productos||[]).filter(p => coincideArticulo(p, buscaArt)).slice(0,15) : [];
+  const artFiltradosC = buscaArtC.trim() ? (productos||[]).filter(p => coincideArticulo(p, buscaArtC)).slice(0,15) : [];
   const clientesFiltrados = buscaCliente.trim() ? clientesRev.filter(c => (c.nombre||'').toLowerCase().includes(buscaCliente.toLowerCase())) : clientesRev;
 
-  const descArt = (codigo) => { const p=(productos||[]).find(x=>x.codigo===codigo); return p ? p.descripcion : codigo; };
+  const descArt = (codigo) => { const p=(productos||[]).find(x=>x.codigo===codigo); return p ? p.nombre : codigo; };
   const inputCls = "w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
   const cf = clienteSel ? String(clienteSel.id) : '';
 
@@ -1352,7 +1363,7 @@ function SeccionMargenes({ usuario, productos }) {
           <p className="text-sm font-bold text-gray-700 mb-1">Margen por artículo</p>
           <input value={buscaArt} onChange={e=>setBuscaArt(e.target.value)} placeholder="🔍 Buscar por nombre o código…" className={inputCls} />
           {artFiltrados.map(p => (
-            <FilaMargen key={p.codigo} etiqueta={p.descripcion} sub={`${p.codigo} · ${p.marca}`} costoRef={p.precio||0}
+            <FilaMargen key={p.codigo} etiqueta={p.nombre} sub={`${p.codigo} · ${p.marca}`} costoRef={costoDe(p)}
               propio={getMargen('','articulo',p.codigo)} heredado={getHeredado('','articulo',p.codigo,p.marca)}
               abierto={abierto==='a-'+p.codigo} onAbrir={()=>setAbierto('a-'+p.codigo)} onCerrar={()=>setAbierto(null)}
               onGuardar={(pp)=>guardar('','articulo',p.codigo,pp)} onBorrar={()=>borrar('','articulo',p.codigo)} />
@@ -1405,7 +1416,7 @@ function SeccionMargenes({ usuario, productos }) {
               <p className="text-sm font-bold text-gray-700 mb-1">Margen por artículo (de este cliente)</p>
               <input value={buscaArtC} onChange={e=>setBuscaArtC(e.target.value)} placeholder="🔍 Buscar por nombre o código…" className={inputCls} />
               {artFiltradosC.map(p => (
-                <FilaMargen key={p.codigo} etiqueta={p.descripcion} sub={`${p.codigo} · ${p.marca}`} costoRef={p.precio||0}
+                <FilaMargen key={p.codigo} etiqueta={p.nombre} sub={`${p.codigo} · ${p.marca}`} costoRef={costoDe(p)}
                   propio={getMargen(cf,'articulo',p.codigo)} heredado={getHeredado(cf,'articulo',p.codigo,p.marca)}
                   abierto={abierto==='ca-'+p.codigo} onAbrir={()=>setAbierto('ca-'+p.codigo)} onCerrar={()=>setAbierto(null)}
                   onGuardar={(pp)=>guardar(cf,'articulo',p.codigo,pp)} onBorrar={()=>borrar(cf,'articulo',p.codigo)} />
