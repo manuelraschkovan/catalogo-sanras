@@ -1619,6 +1619,414 @@ function SeccionLevantarPedido({ usuario, productos, onLevantar, vistaInicial })
 
 
 
+// ============================================================
+//  SECCIÓN CONSOLIDAR (R4) — juntar pedidos y mandarlos a San-Ras
+// ============================================================
+function SeccionConsolidar({ usuario, productos, onEnviado }) {
+  const [clientes, setClientes] = useState([]);
+  const [margenes, setMargenes] = useState([]);
+  const [items, setItems] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  const [seleccion, setSeleccion] = useState({});       // idCliente -> true/false
+  const [expandido, setExpandido] = useState({});       // idCliente -> abierto/cerrado
+  const [detalleClientes, setDetalleClientes] = useState(false); // tilde: mandar desglose a San-Ras
+  const [stockPropio, setStockPropio] = useState([]);   // [{ codigoArticulo, cantidad }]
+  const [buscaProd, setBuscaProd] = useState('');
+  const [mostrarBuscador, setMostrarBuscador] = useState(false);
+
+  const [limite, setLimite] = useState(null);           // { limite, usados, restantes }
+  const [enviando, setEnviando] = useState(false);
+  const [confirmar, setConfirmar] = useState(false);
+  const [resultado, setResultado] = useState(null);     // pantalla de éxito
+
+  useEffect(() => { cargarTodo(); /* eslint-disable-next-line */ }, []);
+
+  async function cargarTodo() {
+    setCargando(true); setError('');
+    try {
+      const [rC, rM, rP, rL] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/revendedor/clientes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) }),
+        fetch(`${BACKEND_URL}/api/revendedor/margenes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) }),
+        fetch(`${BACKEND_URL}/api/revendedor/pedidos`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) }),
+        fetch(`${BACKEND_URL}/api/revendedor/limite-hoy`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) })
+      ]);
+      const dC = await rC.json(); const dM = await rM.json(); const dP = await rP.json(); const dL = await rL.json();
+      if (dC.ok) setClientes(dC.clientes || []);
+      if (dM.ok) setMargenes(dM.margenes || []);
+      if (dP.ok) setItems(dP.items || []);
+      if (dL.ok) setLimite({ limite: dL.limite, usados: dL.usados, restantes: dL.restantes });
+      // Por defecto, tildar todos los clientes que tienen pedido.
+      if (dP.ok) {
+        const sel = {};
+        (dP.items || []).forEach(it => { sel[it.idClienteFinal] = true; });
+        setSeleccion(sel);
+      }
+    } catch (e) { setError('No se pudo cargar.'); }
+    finally { setCargando(false); }
+  }
+
+  const costoDe = (p) => p && p.precios ? (p.precios[5] || p.precios[1] || 0) : 0;
+  const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR');
+  const prodDe = (cod) => (productos || []).find(x => x.codigo === cod);
+  const nombreProd = (cod) => { const p = prodDe(cod); return p ? (p.nombre || p.descripcionOriginal || cod) : cod; };
+
+  // Clientes que tienen al menos un ítem en preparación.
+  const clientesConPedido = clientes.filter(c => items.some(it => Number(it.idClienteFinal) === Number(c.id)));
+  const itemsDe = (idc) => items.filter(it => Number(it.idClienteFinal) === Number(idc));
+  const costoClienteLista5 = (idc) => itemsDe(idc).reduce((s, it) => { const p = prodDe(it.codigoArticulo); return s + (p ? costoDe(p) * it.cantidad : 0); }, 0);
+  const unidadesCliente = (idc) => itemsDe(idc).reduce((s, it) => s + it.cantidad, 0);
+
+  // Resumen EN VIVO según los tildes + stock propio.
+  const resumen = React.useMemo(() => {
+    let unidades = 0, costo = 0;
+    const porArt = {};
+    for (const c of clientesConPedido) {
+      if (!seleccion[c.id]) continue;
+      for (const it of itemsDe(c.id)) {
+        const p = prodDe(it.codigoArticulo); if (!p) continue;
+        unidades += it.cantidad; costo += costoDe(p) * it.cantidad;
+        porArt[it.codigoArticulo] = (porArt[it.codigoArticulo] || 0) + it.cantidad;
+      }
+    }
+    for (const sp of stockPropio) {
+      const p = prodDe(sp.codigoArticulo); if (!p || sp.cantidad <= 0) continue;
+      unidades += sp.cantidad; costo += costoDe(p) * sp.cantidad;
+      porArt[sp.codigoArticulo] = (porArt[sp.codigoArticulo] || 0) + sp.cantidad;
+    }
+    return { unidades, costo, articulos: Object.keys(porArt).length };
+    // eslint-disable-next-line
+  }, [seleccion, stockPropio, items, clientes, productos]);
+
+  const cantClientesSel = clientesConPedido.filter(c => seleccion[c.id]).length;
+
+  function toggleCliente(id) { setSeleccion(s => ({ ...s, [id]: !s[id] })); }
+  function toggleExpand(id) { setExpandido(s => ({ ...s, [id]: !s[id] })); }
+
+  // Stock propio
+  const prodFiltrados = buscaProd.trim().length >= 2
+    ? (productos || []).filter(p => {
+        const t = buscaProd.toLowerCase();
+        return (p.nombre || '').toLowerCase().includes(t)
+          || (p.descripcionOriginal || '').toLowerCase().includes(t)
+          || (p.codigo || '').toLowerCase().includes(t)
+          || (p.marca || '').toLowerCase().includes(t);
+      }).slice(0, 15)
+    : [];
+  function agregarPropio(p) {
+    setStockPropio(sp => {
+      const existe = sp.find(x => x.codigoArticulo === p.codigo);
+      if (existe) return sp.map(x => x.codigoArticulo === p.codigo ? { ...x, cantidad: x.cantidad + 1 } : x);
+      return [...sp, { codigoArticulo: p.codigo, cantidad: 1 }];
+    });
+    setBuscaProd(''); setMostrarBuscador(false);
+  }
+  function cambiarPropio(cod, cant) {
+    const n = Math.max(0, parseInt(cant) || 0);
+    setStockPropio(sp => n === 0 ? sp.filter(x => x.codigoArticulo !== cod) : sp.map(x => x.codigoArticulo === cod ? { ...x, cantidad: n } : x));
+  }
+
+  async function enviar() {
+    setEnviando(true); setError('');
+    try {
+      const ids = clientesConPedido.filter(c => seleccion[c.id]).map(c => c.id);
+      const r = await fetch(`${BACKEND_URL}/api/revendedor/consolidar/enviar`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: usuario.token, clientes: ids, stockPropio, detalleClientes })
+      });
+      const data = await r.json();
+      if (!data.ok) { setError(data.motivo || 'No se pudo enviar el consolidado.'); setConfirmar(false); }
+      else { setResultado(data); if (onEnviado) onEnviado(); }
+    } catch (e) { setError('No se pudo conectar.'); setConfirmar(false); }
+    finally { setEnviando(false); }
+  }
+
+  if (cargando) return <div className="p-8 text-center text-gray-500">Cargando…</div>;
+
+  // Pantalla de éxito
+  if (resultado) {
+    return (
+      <div className="flex-1 overflow-y-auto p-6 text-center" style={{ backgroundColor: VERDE_REV.fondo }}>
+        <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center mb-4" style={{ backgroundColor: VERDE_REV.principal }}>
+          <Check className="w-9 h-9 text-white" />
+        </div>
+        <h3 className="text-xl font-black mb-1" style={{ color: VERDE_REV.principal }}>¡Consolidado enviado!</h3>
+        <p className="text-gray-600 text-sm mb-4">San-Ras ya recibió tu pedido.</p>
+        <div className="bg-white rounded-xl p-4 border text-left space-y-1 max-w-xs mx-auto">
+          {resultado.numeroPedido && <div className="flex justify-between text-sm"><span className="text-gray-500">Nº de pedido</span><strong>{resultado.numeroPedido}</strong></div>}
+          <div className="flex justify-between text-sm"><span className="text-gray-500">Clientes</span><strong>{resultado.cantClientes}</strong></div>
+          <div className="flex justify-between text-sm"><span className="text-gray-500">Unidades</span><strong>{resultado.totalItems}</strong></div>
+          <div className="flex justify-between text-sm"><span className="text-gray-500">Total a pagar</span><strong>{fmt(resultado.total)}</strong></div>
+        </div>
+        <p className="text-xs text-gray-400 mt-4">Lo encontrás en "Mis consolidados".</p>
+      </div>
+    );
+  }
+
+  const sinPedidos = clientesConPedido.length === 0 && stockPropio.length === 0;
+  const limiteAgotado = limite && limite.restantes <= 0;
+
+  return (
+    <div className="flex-1 overflow-y-auto" style={{ backgroundColor: VERDE_REV.fondo }}>
+      <div className="p-4 space-y-3">
+        {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+
+        {/* Aviso de límite diario */}
+        {limite && (
+          <div className="text-xs rounded-lg px-3 py-2 flex items-center gap-2"
+            style={{ backgroundColor: limiteAgotado ? '#fef2f2' : 'white', color: limiteAgotado ? '#b91c1c' : '#374151', border: '1px solid ' + (limiteAgotado ? '#fecaca' : VERDE_REV.claro) }}>
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            {limiteAgotado
+              ? `Ya enviaste ${limite.usados} consolidado(s) hoy (máximo ${limite.limite}). Se renueva mañana.`
+              : `Te quedan ${limite.restantes} consolidado(s) hoy (de ${limite.limite}).`}
+          </div>
+        )}
+
+        {sinPedidos ? (
+          <div className="text-center py-12">
+            <Package className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">No tenés pedidos en preparación</p>
+            <p className="text-gray-400 text-sm mt-1">Primero levantá pedidos a tus clientes.</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm font-bold" style={{ color: VERDE_REV.principal }}>Elegí qué clientes entran en este envío</p>
+
+            {/* Lista de clientes con pedido */}
+            <div className="space-y-2">
+              {clientesConPedido.map(c => {
+                const abierto = expandido[c.id];
+                const marcado = !!seleccion[c.id];
+                return (
+                  <div key={c.id} className="bg-white rounded-lg border overflow-hidden" style={marcado ? { borderColor: VERDE_REV.principal, borderWidth: 2 } : {}}>
+                    <div className="flex items-center gap-2 p-3">
+                      <button onClick={() => toggleCliente(c.id)} className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
+                        style={marcado ? { backgroundColor: VERDE_REV.principal } : { border: '2px solid #d1d5db' }}>
+                        {marcado && <Check className="w-4 h-4 text-white" />}
+                      </button>
+                      <div className="flex-1 min-w-0" onClick={() => toggleCliente(c.id)} style={{ cursor: 'pointer' }}>
+                        <div className="font-bold text-gray-900 truncate">{c.nombre}</div>
+                        <div className="text-xs text-gray-500">{c.localidad} · {unidadesCliente(c.id)} u · {fmt(costoClienteLista5(c.id))}</div>
+                      </div>
+                      <button onClick={() => toggleExpand(c.id)} className="p-1 text-gray-400">
+                        <ChevronDown className={`w-5 h-5 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+                    {abierto && (
+                      <div className="px-3 pb-3 pt-0 border-t bg-gray-50">
+                        {itemsDe(c.id).map((it, i) => (
+                          <div key={i} className="flex justify-between text-xs py-1">
+                            <span className="text-gray-600 truncate pr-2">{nombreProd(it.codigoArticulo)}</span>
+                            <span className="text-gray-900 font-bold flex-shrink-0">x{it.cantidad}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Stock propio (mercadería extra) */}
+            <div className="bg-white rounded-lg border p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold" style={{ color: VERDE_REV.principal }}>Agregar al pedido (stock propio)</span>
+                <button onClick={() => setMostrarBuscador(m => !m)} className="text-xs font-bold flex items-center gap-1" style={{ color: VERDE_REV.principal }}>
+                  <Plus className="w-4 h-4" /> Agregar
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mb-2">Mercadería extra para tu depósito (no va a ningún cliente).</p>
+              {mostrarBuscador && (
+                <div className="relative mb-2">
+                  <input value={buscaProd} onChange={e => setBuscaProd(e.target.value)} placeholder="🔍 Buscar producto…"
+                    className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: VERDE_REV.claro }} autoFocus />
+                  {prodFiltrados.length > 0 && (
+                    <div className="absolute z-10 left-0 right-0 bg-white border rounded-lg mt-1 shadow-lg max-h-56 overflow-y-auto">
+                      {prodFiltrados.map(p => (
+                        <button key={p.codigo} onClick={() => agregarPropio(p)} className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b last:border-0">
+                          <span className="font-bold">{p.nombre || p.codigo}</span>
+                          <span className="text-gray-400 text-xs"> · {p.marca} · {fmt(costoDe(p))}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {stockPropio.length > 0 && (
+                <div className="space-y-1">
+                  {stockPropio.map(sp => (
+                    <div key={sp.codigoArticulo} className="flex items-center gap-2 text-sm">
+                      <span className="flex-1 truncate">{nombreProd(sp.codigoArticulo)}</span>
+                      <input type="number" min="0" value={sp.cantidad} onChange={e => cambiarPropio(sp.codigoArticulo, e.target.value)}
+                        className="w-16 px-2 py-1 rounded border text-center" style={{ borderColor: VERDE_REV.claro }} />
+                      <button onClick={() => cambiarPropio(sp.codigoArticulo, 0)} className="text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Tilde: incluir detalle de clientes */}
+            <label className="flex items-center gap-2 bg-white rounded-lg border p-3 cursor-pointer">
+              <button type="button" onClick={() => setDetalleClientes(d => !d)} className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
+                style={detalleClientes ? { backgroundColor: VERDE_REV.principal } : { border: '2px solid #d1d5db' }}>
+                {detalleClientes && <Check className="w-4 h-4 text-white" />}
+              </button>
+              <div onClick={() => setDetalleClientes(d => !d)}>
+                <div className="text-sm font-bold text-gray-800">Incluir el detalle de clientes en el pedido</div>
+                <div className="text-xs text-gray-500">Si lo dejás sin tildar, San-Ras recibe el pedido totalizado, sin los nombres de tus clientes.</div>
+              </div>
+            </label>
+
+            {/* Resumen en vivo */}
+            <div className="bg-white rounded-xl p-4 border space-y-2">
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Clientes en el envío</span><strong>{cantClientesSel}</strong></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Artículos distintos</span><strong>{resumen.articulos}</strong></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Unidades totales</span><strong>{resumen.unidades}</strong></div>
+              <div className="flex justify-between pt-2 border-t">
+                <span className="font-bold" style={{ color: VERDE_REV.principal }}>Total a pagar a San-Ras</span>
+                <strong style={{ color: VERDE_REV.principal }}>{fmt(resumen.costo)}</strong>
+              </div>
+            </div>
+
+            <button onClick={() => setConfirmar(true)} disabled={limiteAgotado || resumen.unidades === 0}
+              className="w-full py-3 rounded-lg font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50"
+              style={{ backgroundColor: VERDE_REV.principal }}>
+              <Send className="w-5 h-5" /> Enviar consolidado a San-Ras
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Confirmación de envío */}
+      {confirmar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full p-5">
+            <p className="font-black text-lg mb-1" style={{ color: VERDE_REV.principal }}>¿Enviar el consolidado?</p>
+            <p className="text-sm text-gray-600 mb-1">Van <strong>{cantClientesSel}</strong> cliente(s), <strong>{resumen.unidades}</strong> unidades.</p>
+            <p className="text-sm text-gray-600 mb-1">Total a pagar: <strong>{fmt(resumen.costo)}</strong></p>
+            <p className="text-xs text-gray-400 mb-4">El pedido entra directo a San-Ras. {detalleClientes ? 'Incluye el detalle de tus clientes.' : 'Va totalizado, sin nombres de clientes.'}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmar(false)} disabled={enviando} className="flex-1 py-2 rounded-lg border border-gray-300 font-bold text-gray-700 hover:bg-gray-50">Cancelar</button>
+              <button onClick={enviar} disabled={enviando} className="flex-1 py-2 rounded-lg font-bold text-white" style={{ backgroundColor: VERDE_REV.principal }}>
+                {enviando ? 'Enviando…' : 'Sí, enviar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+//  SECCIÓN MIS CONSOLIDADOS (R4) — histórico de lo ya enviado
+// ============================================================
+function SeccionMisConsolidados({ usuario, productos }) {
+  const [lista, setLista] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+  const [abierto, setAbierto] = useState(null);         // id del consolidado abierto
+  const [detalle, setDetalle] = useState({});           // id -> { articulos, clientes }
+  const [cargandoDet, setCargandoDet] = useState(null);
+
+  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, []);
+
+  async function cargar() {
+    setCargando(true); setError('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/revendedor/consolidados`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token })
+      });
+      const data = await r.json();
+      if (data.ok) setLista(data.consolidados || []);
+      else setError(data.motivo || 'No se pudo cargar.');
+    } catch (e) { setError('No se pudo conectar.'); }
+    finally { setCargando(false); }
+  }
+
+  async function abrir(id) {
+    if (abierto === id) { setAbierto(null); return; }
+    setAbierto(id);
+    if (!detalle[id]) {
+      setCargandoDet(id);
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/revendedor/consolidados/detalle`, {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token, idConsolidado: id })
+        });
+        const data = await r.json();
+        if (data.ok) setDetalle(d => ({ ...d, [id]: data.detalle }));
+      } catch (e) {}
+      finally { setCargandoDet(null); }
+    }
+  }
+
+  const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR');
+  const nombreProd = (cod) => { const p = (productos||[]).find(x => x.codigo === cod); return p ? (p.nombre || p.descripcionOriginal || cod) : cod; };
+  const fechaCorta = (f) => { if (!f) return ''; const s = String(f).split(' ')[0]; const [a,m,d] = s.split('-'); return d && m && a ? `${d}/${m}/${a}` : s; };
+
+  if (cargando) return <div className="p-8 text-center text-gray-500">Cargando…</div>;
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4" style={{ backgroundColor: VERDE_REV.fondo }}>
+      {error && <div className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+      {lista.length === 0 ? (
+        <div className="text-center py-12">
+          <ClipboardList className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500">Todavía no enviaste consolidados</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {lista.map(c => {
+            const det = detalle[c.id];
+            return (
+              <div key={c.id} className="bg-white rounded-lg border overflow-hidden">
+                <button onClick={() => abrir(c.id)} className="w-full flex items-center gap-2 p-3 text-left">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-gray-900">{fechaCorta(c.fechaDia)} {c.numeroPedido && <span className="text-xs text-gray-400">· Nº {c.numeroPedido}</span>}</div>
+                    <div className="text-xs text-gray-500">{c.cantClientes} cliente(s) · {c.totalItems} u · {fmt(c.total)}</div>
+                  </div>
+                  <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${abierto === c.id ? 'rotate-180' : ''}`} />
+                </button>
+                {abierto === c.id && (
+                  <div className="px-3 pb-3 border-t bg-gray-50">
+                    {cargandoDet === c.id ? (
+                      <p className="text-xs text-gray-400 py-2">Cargando detalle…</p>
+                    ) : det ? (
+                      <>
+                        <p className="text-xs font-bold text-gray-600 mt-2 mb-1">Clientes</p>
+                        {det.clientes.length === 0 ? <p className="text-xs text-gray-400">Sin desglose por cliente.</p> : det.clientes.map((cl, i) => (
+                          <div key={i} className="text-xs py-1">
+                            <span className="font-bold">{cl.nombre}</span>{cl.localidad ? ` · ${cl.localidad}` : ''}
+                            <span className="text-gray-500"> ({cl.detalle.reduce((s,d)=>s+d.cantidad,0)} u)</span>
+                          </div>
+                        ))}
+                        {/* Sobrante: lo que se pidió de más (stock propio) */}
+                        {det.articulos.some(a => a.sobrante > 0) && (
+                          <>
+                            <p className="text-xs font-bold text-gray-600 mt-3 mb-1">Te sobra en depósito</p>
+                            {det.articulos.filter(a => a.sobrante > 0).map((a, i) => (
+                              <div key={i} className="flex justify-between text-xs py-1">
+                                <span className="text-gray-600 truncate pr-2">{nombreProd(a.codigoArticulo)}</span>
+                                <span className="font-bold flex-shrink-0">{a.sobrante} u</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </>
+                    ) : <p className="text-xs text-gray-400 py-2">No se pudo cargar el detalle.</p>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModuloRevendedor({ usuario, productos, pestanaInicial, onLevantar, onCerrar }) {
   // pestanaInicial: 'menu' (por defecto), 'pedido' (levantar) o 'estadisticas'.
   const seccionInicial = (pestanaInicial === 'pedido' || pestanaInicial === 'estadisticas') ? 'pedido' : 'menu';
@@ -1747,7 +2155,9 @@ function ModuloRevendedor({ usuario, productos, pestanaInicial, onLevantar, onCe
   const tituloSeccion = seccion === 'menu' ? 'MÓDULO REVENDEDOR'
     : seccion === 'clientes' ? 'MIS CLIENTES'
     : seccion === 'margenes' ? 'MÁRGENES'
-    : seccion === 'pedido' ? 'LEVANTAR PEDIDO' : 'MÓDULO REVENDEDOR';
+    : seccion === 'pedido' ? 'LEVANTAR PEDIDO'
+    : seccion === 'consolidar' ? 'CONSOLIDAR'
+    : seccion === 'historial' ? 'MIS CONSOLIDADOS' : 'MÓDULO REVENDEDOR';
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1792,15 +2202,49 @@ function ModuloRevendedor({ usuario, productos, pestanaInicial, onLevantar, onCe
                 <div className="text-xs text-gray-500">Tomá pedidos a tus clientes con tu precio</div>
               </div>
             </button>
-            <div className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-gray-200 opacity-60 text-left bg-white">
-              <Package className="w-6 h-6 text-gray-400" />
+            <button onClick={() => setSeccion('consolidar')}
+              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 bg-white hover:bg-gray-50 transition-colors text-left"
+              style={{ borderColor: VERDE_REV.principal }}>
+              <Package className="w-6 h-6" style={{ color: VERDE_REV.principal }} />
               <div>
-                <div className="font-bold text-gray-500">Consolidado y pedido a San-Ras</div>
-                <div className="text-xs text-gray-400">Juntá los pedidos y enviálos</div>
+                <div className="font-bold" style={{ color: VERDE_REV.principal }}>Consolidar y enviar a San-Ras</div>
+                <div className="text-xs text-gray-500">Juntá los pedidos de tus clientes y mandalos</div>
               </div>
-              <span className="ml-auto text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Próximamente</span>
-            </div>
+            </button>
+            <button onClick={() => setSeccion('historial')}
+              className="w-full flex items-center gap-3 p-4 rounded-lg border-2 bg-white hover:bg-gray-50 transition-colors text-left"
+              style={{ borderColor: VERDE_REV.principal }}>
+              <ClipboardList className="w-6 h-6" style={{ color: VERDE_REV.principal }} />
+              <div>
+                <div className="font-bold" style={{ color: VERDE_REV.principal }}>Mis consolidados</div>
+                <div className="text-xs text-gray-500">Lo que ya enviaste y lo que te sobra en depósito</div>
+              </div>
+            </button>
           </div>
+        )}
+
+        {/* SECCIÓN consolidar (R4) */}
+        {seccion === 'consolidar' && (
+          <>
+            <div className="flex items-center gap-2 p-3 border-b">
+              <button onClick={() => setSeccion('menu')} className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
+                <ChevronLeft className="w-4 h-4" /> Volver
+              </button>
+            </div>
+            <SeccionConsolidar usuario={usuario} productos={productos} onEnviado={() => {}} />
+          </>
+        )}
+
+        {/* SECCIÓN mis consolidados (R4) */}
+        {seccion === 'historial' && (
+          <>
+            <div className="flex items-center gap-2 p-3 border-b">
+              <button onClick={() => setSeccion('menu')} className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
+                <ChevronLeft className="w-4 h-4" /> Volver
+              </button>
+            </div>
+            <SeccionMisConsolidados usuario={usuario} productos={productos} />
+          </>
         )}
 
         {/* SECCIÓN levantar pedido (R3) */}
@@ -2164,6 +2608,13 @@ function PanelAdmin() {
   // Lista de excepciones cargadas
   const [excepciones, setExcepciones] = useState([]);
 
+  // Límite de consolidados del revendedor (R4)
+  const [limiteGeneral, setLimiteGeneral] = useState('');
+  const [excLimite, setExcLimite] = useState([]);       // excepciones por revendedor
+  const [codRev, setCodRev] = useState('');
+  const [limRev, setLimRev] = useState('');
+  const [msgLimite, setMsgLimite] = useState('');
+
   async function entrar() {
     setErrorClave(''); setVerificando(true);
     try {
@@ -2172,10 +2623,48 @@ function PanelAdmin() {
         body: JSON.stringify({ clave })
       });
       const data = await r.json();
-      if (data.ok) { setEntrado(true); cargarExcepciones(); }
+      if (data.ok) { setEntrado(true); cargarExcepciones(); cargarLimites(); }
       else setErrorClave(data.motivo || 'Clave incorrecta.');
     } catch (e) { setErrorClave('No se pudo conectar.'); }
     finally { setVerificando(false); }
+  }
+
+  async function cargarLimites() {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/limite-rev`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave })
+      });
+      const data = await r.json();
+      if (data.ok) { setLimiteGeneral(String(data.general)); setExcLimite(data.excepciones || []); }
+    } catch (e) {}
+  }
+
+  async function guardarLimiteGeneral() {
+    setMsgLimite('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/limite-rev/general`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave, limite: limiteGeneral })
+      });
+      const data = await r.json();
+      if (data.ok) { setMsgLimite('Límite general guardado.'); cargarLimites(); }
+      else setMsgLimite(data.motivo || 'No se pudo guardar.');
+    } catch (e) { setMsgLimite('No se pudo conectar.'); }
+  }
+
+  async function guardarExcLimite(quitar) {
+    setMsgLimite('');
+    if (!codRev.trim()) { setMsgLimite('Ingresá el código del revendedor.'); return; }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/limite-rev/excepcion`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave, codigo: codRev.trim(), limite: quitar ? '' : limRev })
+      });
+      const data = await r.json();
+      if (data.ok) { setMsgLimite(quitar ? 'Excepción quitada.' : 'Excepción guardada.'); setCodRev(''); setLimRev(''); cargarLimites(); }
+      else setMsgLimite(data.motivo || 'No se pudo guardar.');
+    } catch (e) { setMsgLimite('No se pudo conectar.'); }
   }
 
   async function cargarExcepciones() {
@@ -2326,6 +2815,56 @@ function PanelAdmin() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Límite de consolidados del revendedor (R4) */}
+        <div className="bg-white rounded-xl shadow p-4 mt-4">
+          <h2 className="font-bold mb-1" style={{ color: COLORS.azul }}>Límite de consolidados por día (revendedores)</h2>
+          <p className="text-xs text-gray-500 mb-3">Cuántos consolidados puede mandar un revendedor por día. El límite general vale para todos; podés ponerle una excepción a uno puntual.</p>
+
+          {msgLimite && <div className="mb-3 text-sm text-gray-700 bg-gray-100 p-2 rounded">{msgLimite}</div>}
+
+          {/* General */}
+          <div className="flex items-end gap-2 mb-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Límite general</label>
+              <input type="number" min="1" max="50" value={limiteGeneral} onChange={e => setLimiteGeneral(e.target.value)}
+                className="w-24 px-3 py-2 rounded-lg border border-gray-300" />
+            </div>
+            <button onClick={guardarLimiteGeneral} className="px-3 py-2 rounded-lg text-sm font-bold text-white" style={{ backgroundColor: COLORS.azul }}>Guardar</button>
+          </div>
+
+          {/* Excepción por revendedor */}
+          <div className="border-t pt-3">
+            <p className="text-xs font-bold text-gray-600 mb-2">Excepción para un revendedor</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Código del revendedor</label>
+                <input type="text" value={codRev} onChange={e => setCodRev(e.target.value)} placeholder="Ej: 1234"
+                  className="w-32 px-3 py-2 rounded-lg border border-gray-300" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Su límite</label>
+                <input type="number" min="1" max="50" value={limRev} onChange={e => setLimRev(e.target.value)}
+                  className="w-24 px-3 py-2 rounded-lg border border-gray-300" />
+              </div>
+              <button onClick={() => guardarExcLimite(false)} className="px-3 py-2 rounded-lg text-sm font-bold text-white bg-green-600 hover:bg-green-700">Guardar</button>
+              <button onClick={() => guardarExcLimite(true)} className="px-3 py-2 rounded-lg text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50">Quitar</button>
+            </div>
+
+            {excLimite.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {excLimite.map(e => (
+                  <div key={e.codigo} className="flex items-center gap-2 border rounded-lg p-2 text-sm">
+                    <span className="font-bold">Cód. {e.codigo}</span>
+                    <span className="text-gray-600">{e.limite} por día</span>
+                    {e.nota && <span className="text-xs text-gray-400">· {e.nota}</span>}
+                    <button onClick={() => { setCodRev(e.codigo); setLimRev(String(e.limite)); }} className="ml-auto text-blue-600 hover:underline">editar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
