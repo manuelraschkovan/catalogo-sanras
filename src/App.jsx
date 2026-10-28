@@ -66,35 +66,71 @@ function useTema() {
 }
 
 // CSS del modo oscuro. Se inyecta una sola vez (en el wrapper App).
+// Paleta: slate oscuro neutro. Superficies en capas (fondo < tarjeta < elevado)
+// para que las tarjetas se despeguen del fondo y no quede todo plano.
+//   fondo página  #0b1220
+//   tarjeta        #1b2436
+//   elevado/hover  #243045
+//   borde          #2e3b52
+//   texto          #e6eaf2 / secundario #9aa7bd
 const CSS_MODO_OSCURO = `
-  body.dark { background-color: #0f172a; color: #e5e7eb; }
-  /* Fondos */
-  body.dark .bg-white { background-color: #1e293b !important; }
-  body.dark .bg-gray-50 { background-color: #0f172a !important; }
-  body.dark .bg-gray-100 { background-color: #1e293b !important; }
-  body.dark .bg-gray-200 { background-color: #334155 !important; }
-  body.dark .hover\\:bg-gray-50:hover { background-color: #334155 !important; }
-  body.dark .hover\\:bg-gray-100:hover { background-color: #334155 !important; }
-  /* Textos grises -> claros */
-  body.dark .text-gray-900 { color: #f1f5f9 !important; }
-  body.dark .text-gray-800 { color: #e2e8f0 !important; }
-  body.dark .text-gray-700 { color: #cbd5e1 !important; }
-  body.dark .text-gray-600 { color: #cbd5e1 !important; }
-  body.dark .text-gray-500 { color: #94a3b8 !important; }
-  body.dark .text-gray-400 { color: #94a3b8 !important; }
-  /* Bordes */
-  body.dark .border, body.dark .border-t, body.dark .border-b,
-  body.dark .border-gray-200, body.dark .border-gray-300 { border-color: #334155 !important; }
-  /* Inputs y selects */
+  body.dark { background-color: #0b1220; color: #e6eaf2; }
+
+  /* --- Superficies --- */
+  body.dark .bg-white { background-color: #1b2436 !important; }
+  body.dark .bg-gray-50 { background-color: #141c2b !important; }
+  body.dark .bg-gray-100 { background-color: #243045 !important; }
+  body.dark .bg-gray-200 { background-color: #2e3b52 !important; }
+  body.dark .hover\\:bg-gray-50:hover { background-color: #243045 !important; }
+  body.dark .hover\\:bg-gray-100:hover { background-color: #2e3b52 !important; }
+
+  /* --- Textos grises -> claros --- */
+  body.dark .text-gray-900 { color: #f3f6fb !important; }
+  body.dark .text-gray-800 { color: #e6eaf2 !important; }
+  body.dark .text-gray-700 { color: #cdd6e6 !important; }
+  body.dark .text-gray-600 { color: #b4c0d4 !important; }
+  body.dark .text-gray-500 { color: #9aa7bd !important; }
+  body.dark .text-gray-400 { color: #8593aa !important; }
+
+  /* --- Bordes --- */
+  body.dark .border, body.dark .border-t, body.dark .border-b, body.dark .border-2,
+  body.dark .border-gray-200, body.dark .border-gray-300 { border-color: #2e3b52 !important; }
+
+  /* --- Inputs --- */
   body.dark input, body.dark select, body.dark textarea {
-    background-color: #0f172a !important; color: #e5e7eb !important; border-color: #334155 !important;
+    background-color: #0f1726 !important; color: #e6eaf2 !important; border-color: #2e3b52 !important;
   }
-  body.dark input::placeholder, body.dark textarea::placeholder { color: #64748b !important; }
-  /* Avisos suaves (verde/rojo/ámbar/azul 50) se mantienen pero con texto legible */
-  body.dark .bg-green-50 { background-color: #052e2b !important; }
-  body.dark .bg-red-50 { background-color: #3f1d1d !important; }
-  body.dark .bg-amber-50 { background-color: #3a2e0a !important; }
-  body.dark .bg-blue-50 { background-color: #1e293b !important; }
+  body.dark input::placeholder, body.dark textarea::placeholder { color: #6b7893 !important; }
+
+  /* --- Sombras un poco más marcadas para separar tarjetas --- */
+  body.dark .shadow, body.dark .shadow-sm, body.dark .shadow-md, body.dark .shadow-lg, body.dark .shadow-2xl {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5) !important;
+  }
+
+  /* --- Hueco de relleno de marca (tiene fondo inline claro) --- */
+  body.dark .relleno-marca { background-color: #141c2b !important; }
+
+  /* --- Avisos suaves: fondos oscuros tintados + texto legible --- */
+  body.dark .bg-green-50 { background-color: #10251d !important; }
+  body.dark .text-green-700, body.dark .text-green-800 { color: #6ee7b7 !important; }
+  body.dark .bg-red-50 { background-color: #2a1618 !important; }
+  body.dark .text-red-600, body.dark .text-red-700 { color: #fca5a5 !important; }
+  body.dark .bg-amber-50 { background-color: #2a2109 !important; }
+  body.dark .text-amber-700, body.dark .text-amber-800 { color: #fcd34d !important; }
+  body.dark .bg-blue-50 { background-color: #14233d !important; }
+  body.dark .text-blue-800 { color: #93c5fd !important; }
+  body.dark .bg-orange-50 { background-color: #2a1c0d !important; }
+  body.dark .text-orange-800 { color: #fdba74 !important; }
+
+  /* Chips de marca (bg-blue-100 / text-blue-800) */
+  body.dark .bg-blue-100 { background-color: #1e3a5f !important; }
+  body.dark .bg-green-100 { background-color: #14402e !important; }
+  body.dark .text-green-700 { color: #6ee7b7 !important; }
+
+  /* El azul de marca como TEXTO es muy oscuro sobre fondo oscuro: lo aclaramos. */
+  body.dark .precio-marca, body.dark .azul-marca { color: #7da7ff !important; }
+
+  /* La foto del producto conserva su fondo claro mientras carga (se ve la imagen igual) */
 `;
 
 // ============================================================
@@ -284,7 +320,7 @@ function LogoRelleno({ marca, huecoDesktop }) {
   const maxH = span >= 4 ? 150 : span === 3 ? 130 : span === 2 ? 110 : 90;
   return (
     <div
-      className="flex items-center justify-center p-4 rounded-xl"
+      className="relleno-marca flex items-center justify-center p-4 rounded-xl"
       style={{ backgroundColor: '#f8fafc', gridColumn: `span ${span} / span ${span}` }}
     >
       {(!marca || !url || falla)
@@ -1700,7 +1736,7 @@ function SeccionLevantarPedido({ usuario, productos, onLevantar, vistaInicial })
 //  desplegable donde cada producto muestra el precio de venta del cliente
 //  (margen aplicado) y al tocar se suma al pedido. Las cantidades se ajustan
 //  en la lista de abajo. Reutiliza la misma lógica de precio y de guardado.
-function MenuRapidoPedido({ productos, items, precioUnit, onFijar, nombreCliente }) {
+function MenuRapidoPedido({ productos, items, precioUnit, onFijar, nombreCliente, paraMi }) {
   const [busca, setBusca] = useState('');
   const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR');
 
@@ -1725,7 +1761,7 @@ function MenuRapidoPedido({ productos, items, precioUnit, onFijar, nombreCliente
   return (
     <div className="max-w-3xl mx-auto p-4 pb-32">
       <p className="text-sm font-bold mb-2" style={{ color: VERDE_REV.principal }}>
-        Menú rápido · pedido de <span className="uppercase">{nombreCliente}</span>
+        {paraMi ? 'Menú rápido · tu pedido' : <>Menú rápido · pedido de <span className="uppercase">{nombreCliente}</span></>}
       </p>
 
       {/* Buscador */}
@@ -3197,6 +3233,11 @@ function CatalogoApp() {
     try { return window.localStorage.getItem('sanras_modo_pedido') === 'rapido' ? 'rapido' : 'fotos'; }
     catch (e) { return 'fotos'; }
   });
+  // Vista del catálogo PROPIO del revendedor (cuando pide para su stock, sin cliente).
+  const [modoCatalogoRev, setModoCatalogoRev] = useState(() => {
+    try { return window.localStorage.getItem('sanras_modo_pedido') === 'rapido' ? 'rapido' : 'fotos'; }
+    catch (e) { return 'fotos'; }
+  });
   const [margenesRev, setMargenesRev] = useState([]);        // márgenes del revendedor
   const [itemsPedidoRev, setItemsPedidoRev] = useState({});  // { codigoArticulo: cantidad } del cliente activo
   const [cargandoLevantar, setCargandoLevantar] = useState(false);  // pantalla de carga al entrar a un cliente
@@ -3312,6 +3353,14 @@ function CatalogoApp() {
   const listaActual = usuario?.lista;
   const esPreview = usuario?.tipo === 'preview';
   const puedeElegirEnvio = puedeElegirEntrega(usuario);
+  // El revendedor (lista 5) puede pedir para su propio stock con menú rápido.
+  const esRevendedor = listaActual === 5;
+  // ¿Mostrar el toggle Fotos/Lista? Al levantar pedido a un cliente, o cuando
+  // el revendedor está en su propio catálogo.
+  const puedeToggleVista = !esPreview && (levantarPara || (esRevendedor && !levantarPara));
+  // Vista efectiva del catálogo (levantando a cliente vs catálogo propio del rev).
+  const vistaActual = levantarPara ? modoLevantarVista : (esRevendedor ? modoCatalogoRev : 'fotos');
+  const mostrarMenuRapido = vistaActual === 'rapido' && (levantarPara || esRevendedor);
   // El descuento del 5% solo aplica a Lista 2 cuando RETIRA en local
   const tieneDescuento = listaActual === 2 && modalidadEntrega === 'retiro';
 
@@ -3995,6 +4044,21 @@ function CatalogoApp() {
                 </div>
               ) : (
               <>
+              {/* Toggle Fotos/Lista para el revendedor en su propio catálogo */}
+              {esRevendedor && (
+                <div className="flex bg-white/15 rounded-lg p-0.5 mr-1">
+                  <button onClick={() => setModoCatalogoRev('fotos')}
+                    className="px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors"
+                    style={modoCatalogoRev === 'fotos' ? { backgroundColor: 'white', color: COLORS.azul } : { color: 'white' }}>
+                    Fotos
+                  </button>
+                  <button onClick={() => setModoCatalogoRev('rapido')}
+                    className="px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors"
+                    style={modoCatalogoRev === 'rapido' ? { backgroundColor: 'white', color: COLORS.azul } : { color: 'white' }}>
+                    Lista
+                  </button>
+                </div>
+              )}
               {/* Carrito: queda afuera del menú, siempre visible */}
               <button onClick={() => setMostrarCarrito(true)} className="relative bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors">
                 <ShoppingCart className="w-5 h-5" />
@@ -4011,7 +4075,7 @@ function CatalogoApp() {
             </div>
           </div>
 
-          {!(levantarPara && modoLevantarVista === 'rapido') && (
+          {!mostrarMenuRapido && (
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -4025,7 +4089,7 @@ function CatalogoApp() {
           )}
 
           {/* Barra de marcas + categorías con flechas de desplazamiento */}
-          {!(levantarPara && modoLevantarVista === 'rapido') && (
+          {!mostrarMenuRapido && (
           <div className="flex items-center gap-1">
             {/* Botón Todas / Marcas con desplegable */}
             <div className="relative flex-shrink-0">
@@ -4212,13 +4276,22 @@ function CatalogoApp() {
         </div>
       )}
 
-      {levantarPara && modoLevantarVista === 'rapido' ? (
+      {mostrarMenuRapido ? (
         <MenuRapidoPedido
           productos={productos}
-          items={itemsPedidoRev}
+          items={(() => {
+            if (levantarPara) return itemsPedidoRev;
+            // Catálogo propio del revendedor: mapa { codigo: cantidad } desde el carrito (unidad).
+            const mapa = {};
+            for (const [clave, item] of Object.entries(carrito)) {
+              if (item && item.unidad === 'unidad' && item.producto) mapa[item.producto.codigo] = item.cantidad;
+            }
+            return mapa;
+          })()}
           precioUnit={obtenerPrecioUnitario}
           onFijar={(cod, cant) => { establecerCantidad(productos.find(p => p.codigo === cod) || { codigo: cod }, 'unidad', cant); }}
-          nombreCliente={levantarPara.nombre}
+          nombreCliente={levantarPara ? levantarPara.nombre : (usuario ? usuario.nombre : '')}
+          paraMi={!levantarPara}
         />
       ) : (
       <main className="max-w-7xl mx-auto px-4 py-6">
@@ -4306,7 +4379,7 @@ function CatalogoApp() {
                               </div>
                             ) : (
                               <>
-                                <div className="text-lg font-black mb-1" style={{ color: COLORS.azul }}>
+                                <div className="precio-marca text-lg font-black mb-1" style={{ color: COLORS.azul }}>
                                   {formatearPrecio(precioUnit)}
                                   {producto.soloBulto && (
                                     <span className="text-xs text-gray-500 font-normal"> / bulto</span>
