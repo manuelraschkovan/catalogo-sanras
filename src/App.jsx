@@ -24,6 +24,80 @@ const VERDE_REV = {
 const LOGO_URL = 'https://res.cloudinary.com/dijfepcwx/image/upload/f_auto,q_auto/LOGO_DISTRIBUIDORA_i3ljp2.jpg';
 
 // ============================================================
+//  MODO OSCURO
+// ============================================================
+//  Enfoque sin tocar las ~500 clases de color de la app: un bloque de CSS
+//  que, cuando el <body> tiene la clase "dark", redefine qué significan las
+//  clases neutras de Tailwind (fondos blancos/grises y textos grises). Los
+//  colores de marca (azul San-Ras, verde revendedor) se conservan.
+//  La preferencia se guarda en localStorage y se comparte entre componentes
+//  con un evento propio ('sanras-tema'), para no pasar props por toda la app.
+const CLAVE_TEMA = 'sanras_tema';
+
+function temaGuardado() {
+  try { return window.localStorage.getItem(CLAVE_TEMA) === 'oscuro' ? 'oscuro' : 'claro'; }
+  catch (e) { return 'claro'; }
+}
+
+function aplicarTema(tema) {
+  try {
+    if (tema === 'oscuro') document.body.classList.add('dark');
+    else document.body.classList.remove('dark');
+  } catch (e) {}
+}
+
+function fijarTema(tema) {
+  try { window.localStorage.setItem(CLAVE_TEMA, tema); } catch (e) {}
+  aplicarTema(tema);
+  try { window.dispatchEvent(new CustomEvent('sanras-tema', { detail: tema })); } catch (e) {}
+}
+
+// Hook: devuelve el tema actual y se re-renderiza cuando cambia en cualquier lado.
+function useTema() {
+  const [tema, setTema] = useState(temaGuardado());
+  useEffect(() => {
+    aplicarTema(tema);
+    const h = (e) => setTema(e.detail || temaGuardado());
+    window.addEventListener('sanras-tema', h);
+    return () => window.removeEventListener('sanras-tema', h);
+    // eslint-disable-next-line
+  }, []);
+  return tema;
+}
+
+// CSS del modo oscuro. Se inyecta una sola vez (en el wrapper App).
+const CSS_MODO_OSCURO = `
+  body.dark { background-color: #0f172a; color: #e5e7eb; }
+  /* Fondos */
+  body.dark .bg-white { background-color: #1e293b !important; }
+  body.dark .bg-gray-50 { background-color: #0f172a !important; }
+  body.dark .bg-gray-100 { background-color: #1e293b !important; }
+  body.dark .bg-gray-200 { background-color: #334155 !important; }
+  body.dark .hover\\:bg-gray-50:hover { background-color: #334155 !important; }
+  body.dark .hover\\:bg-gray-100:hover { background-color: #334155 !important; }
+  /* Textos grises -> claros */
+  body.dark .text-gray-900 { color: #f1f5f9 !important; }
+  body.dark .text-gray-800 { color: #e2e8f0 !important; }
+  body.dark .text-gray-700 { color: #cbd5e1 !important; }
+  body.dark .text-gray-600 { color: #cbd5e1 !important; }
+  body.dark .text-gray-500 { color: #94a3b8 !important; }
+  body.dark .text-gray-400 { color: #94a3b8 !important; }
+  /* Bordes */
+  body.dark .border, body.dark .border-t, body.dark .border-b,
+  body.dark .border-gray-200, body.dark .border-gray-300 { border-color: #334155 !important; }
+  /* Inputs y selects */
+  body.dark input, body.dark select, body.dark textarea {
+    background-color: #0f172a !important; color: #e5e7eb !important; border-color: #334155 !important;
+  }
+  body.dark input::placeholder, body.dark textarea::placeholder { color: #64748b !important; }
+  /* Avisos suaves (verde/rojo/ámbar/azul 50) se mantienen pero con texto legible */
+  body.dark .bg-green-50 { background-color: #052e2b !important; }
+  body.dark .bg-red-50 { background-color: #3f1d1d !important; }
+  body.dark .bg-amber-50 { background-color: #3a2e0a !important; }
+  body.dark .bg-blue-50 { background-color: #1e293b !important; }
+`;
+
+// ============================================================
 //  BACKEND SAN-RAS (conexión con Flexxus)
 // ============================================================
 //  Esta es la dirección del backend que lee los productos y precios
@@ -1620,6 +1694,99 @@ function SeccionLevantarPedido({ usuario, productos, onLevantar, vistaInicial })
 
 
 // ============================================================
+//  MENÚ RÁPIDO PARA PEDIR (desplegable con tilde) — solo revendedores
+// ============================================================
+//  Alternativa al catálogo de fotos para levantar pedidos: un buscador
+//  desplegable donde cada producto muestra el precio de venta del cliente
+//  (margen aplicado) y al tocar se suma al pedido. Las cantidades se ajustan
+//  en la lista de abajo. Reutiliza la misma lógica de precio y de guardado.
+function MenuRapidoPedido({ productos, items, precioUnit, onFijar, nombreCliente }) {
+  const [busca, setBusca] = useState('');
+  const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR');
+
+  const filtrados = busca.trim().length >= 2
+    ? (productos || []).filter(p => {
+        const t = busca.toLowerCase();
+        return (p.nombre || '').toLowerCase().includes(t)
+          || (p.descripcionOriginal || '').toLowerCase().includes(t)
+          || (p.codigo || '').toLowerCase().includes(t)
+          || (p.marca || '').toLowerCase().includes(t);
+      }).slice(0, 20)
+    : [];
+
+  const cant = (cod) => Number(items[cod] || 0);
+  const sumar = (cod, delta) => onFijar(cod, Math.max(0, cant(cod) + delta));
+  const poner = (cod, v) => onFijar(cod, Math.max(0, parseInt(v) || 0));
+
+  // Productos ya en el pedido (para la lista de abajo).
+  const enPedido = Object.keys(items).filter(c => cant(c) > 0)
+    .map(c => (productos || []).find(p => p.codigo === c)).filter(Boolean);
+
+  return (
+    <div className="max-w-3xl mx-auto p-4 pb-32">
+      <p className="text-sm font-bold mb-2" style={{ color: VERDE_REV.principal }}>
+        Menú rápido · pedido de <span className="uppercase">{nombreCliente}</span>
+      </p>
+
+      {/* Buscador */}
+      <div className="relative">
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar producto por nombre, marca o código…"
+          className="w-full px-4 py-3 rounded-lg border text-sm bg-white" style={{ borderColor: VERDE_REV.claro }} autoFocus />
+        {busca.trim().length >= 2 && (
+          <div className="border rounded-lg mt-1 max-h-72 overflow-y-auto bg-white shadow">
+            {filtrados.length === 0 && <p className="text-xs text-gray-400 px-3 py-2">Sin resultados.</p>}
+            {filtrados.map(p => {
+              const c = cant(p.codigo);
+              return (
+                <div key={p.codigo} className="flex items-center gap-2 px-3 py-2 border-b last:border-0"
+                  style={c > 0 ? { backgroundColor: VERDE_REV.fondo } : {}}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold truncate">{p.nombre || p.codigo}</div>
+                    <div className="text-xs text-gray-400 truncate">{p.marca} · {p.codigo} · {fmt(precioUnit(p))}</div>
+                  </div>
+                  {c > 0 ? (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button onClick={() => sumar(p.codigo, -1)} className="w-7 h-7 rounded flex items-center justify-center text-white" style={{ backgroundColor: VERDE_REV.principal }}><Minus className="w-4 h-4" /></button>
+                      <span className="w-8 text-center font-bold">{c}</span>
+                      <button onClick={() => sumar(p.codigo, +1)} className="w-7 h-7 rounded flex items-center justify-center text-white" style={{ backgroundColor: VERDE_REV.principal }}><Plus className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <button onClick={() => sumar(p.codigo, +1)} className="px-3 py-1.5 rounded-lg text-sm font-bold text-white flex-shrink-0" style={{ backgroundColor: VERDE_REV.principal }}>Agregar</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Lista de lo ya cargado */}
+      <div className="mt-4">
+        <p className="text-sm font-bold mb-2" style={{ color: VERDE_REV.principal }}>En este pedido ({enPedido.length})</p>
+        {enPedido.length === 0 ? (
+          <p className="text-sm text-gray-400">Todavía no agregaste productos. Buscá arriba y tocá "Agregar".</p>
+        ) : (
+          <div className="space-y-1">
+            {enPedido.map(p => (
+              <div key={p.codigo} className="flex items-center gap-2 bg-white rounded-lg border p-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold truncate">{p.nombre || p.codigo}</div>
+                  <div className="text-xs text-gray-400">{p.marca} · {fmt(precioUnit(p))} c/u</div>
+                </div>
+                <input type="number" min="0" value={cant(p.codigo)} onChange={e => poner(p.codigo, e.target.value)}
+                  className="w-16 px-2 py-1 rounded border text-center" style={{ borderColor: VERDE_REV.claro }} />
+                <span className="w-20 text-right text-sm font-bold">{fmt(precioUnit(p) * cant(p.codigo))}</span>
+                <button onClick={() => onFijar(p.codigo, 0)} className="text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 //  SECCIÓN CONSOLIDAR (R4) — juntar pedidos y mandarlos a San-Ras
 // ============================================================
 function SeccionConsolidar({ usuario, productos, onEnviado }) {
@@ -2921,6 +3088,13 @@ function Ajustes({ usuario, onCerrar }) {
     finally { setGuardando(false); }
   }
 
+  const tema = useTema();
+  const esOscuro = tema === 'oscuro';
+  const [modoPedido, setModoPedido] = useState(() => {
+    try { return window.localStorage.getItem('sanras_modo_pedido') === 'rapido' ? 'rapido' : 'fotos'; }
+    catch (e) { return 'fotos'; }
+  });
+
   const inputCls = "w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
 
   return (
@@ -2933,6 +3107,46 @@ function Ajustes({ usuario, onCerrar }) {
           <button onClick={onCerrar}><X className="w-6 h-6" /></button>
         </div>
         <div className="p-4 space-y-3">
+          {/* Apariencia: modo claro/oscuro */}
+          <p className="text-sm font-bold flex items-center gap-2" style={{ color: COLORS.azul }}>
+            <Settings className="w-4 h-4" /> Apariencia
+          </p>
+          <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3 border">
+            <div>
+              <div className="font-semibold text-gray-800">Modo oscuro</div>
+              <div className="text-xs text-gray-500">{esOscuro ? 'Activado' : 'Desactivado'}</div>
+            </div>
+            <button onClick={() => fijarTema(esOscuro ? 'claro' : 'oscuro')}
+              className="relative w-14 h-8 rounded-full transition-colors flex-shrink-0"
+              style={{ backgroundColor: esOscuro ? COLORS.azul : '#d1d5db' }}
+              aria-label="Cambiar modo oscuro">
+              <span className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow transition-transform"
+                style={{ transform: esOscuro ? 'translateX(24px)' : 'translateX(0)' }} />
+            </button>
+          </div>
+
+          {/* Modo de pedido por defecto: solo revendedores */}
+          {usuario && usuario.lista === 5 && (
+            <div className="bg-gray-50 rounded-lg p-3 border">
+              <div className="font-semibold text-gray-800 mb-1">Cómo levantar pedidos</div>
+              <div className="text-xs text-gray-500 mb-2">Elegí cómo arranca la pantalla al tomarle el pedido a un cliente. Igual lo podés cambiar en el momento con el botón Fotos/Lista.</div>
+              <div className="flex gap-2">
+                <button onClick={() => { setModoPedido('fotos'); try{window.localStorage.setItem('sanras_modo_pedido','fotos');}catch(e){} }}
+                  className="flex-1 py-2 rounded-lg text-sm font-bold border-2"
+                  style={modoPedido === 'fotos' ? { backgroundColor: COLORS.azul, color: 'white', borderColor: COLORS.azul } : { borderColor: '#d1d5db', color: '#374151' }}>
+                  Fotos (catálogo)
+                </button>
+                <button onClick={() => { setModoPedido('rapido'); try{window.localStorage.setItem('sanras_modo_pedido','rapido');}catch(e){} }}
+                  className="flex-1 py-2 rounded-lg text-sm font-bold border-2"
+                  style={modoPedido === 'rapido' ? { backgroundColor: COLORS.azul, color: 'white', borderColor: COLORS.azul } : { borderColor: '#d1d5db', color: '#374151' }}>
+                  Lista rápida
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="border-t pt-3" />
+
           <p className="text-sm font-bold flex items-center gap-2" style={{ color: COLORS.azul }}>
             <KeyRound className="w-4 h-4" /> Cambiar contraseña
           </p>
@@ -2977,6 +3191,12 @@ function CatalogoApp() {
   // Cuando levantarPara != null, el catálogo se transforma: muestra precios de
   // venta del cliente del revendedor y las cantidades van a su pedido.
   const [levantarPara, setLevantarPara] = useState(null);   // { id, nombre, localidad } o null
+  // Vista del modo levantar pedido: 'fotos' (catálogo grande) o 'rapido' (menú desplegable).
+  // Arranca con la preferencia guardada en Ajustes.
+  const [modoLevantarVista, setModoLevantarVista] = useState(() => {
+    try { return window.localStorage.getItem('sanras_modo_pedido') === 'rapido' ? 'rapido' : 'fotos'; }
+    catch (e) { return 'fotos'; }
+  });
   const [margenesRev, setMargenesRev] = useState([]);        // márgenes del revendedor
   const [itemsPedidoRev, setItemsPedidoRev] = useState({});  // { codigoArticulo: cantidad } del cliente activo
   const [cargandoLevantar, setCargandoLevantar] = useState(false);  // pantalla de carga al entrar a un cliente
@@ -3212,6 +3432,8 @@ function CatalogoApp() {
     setMostrarRevendedor(false);
     setCargandoLevantar(true);
     setLevantarPara(cliente);
+    // Respetar la preferencia de modo de pedido elegida en Ajustes.
+    try { setModoLevantarVista(window.localStorage.getItem('sanras_modo_pedido') === 'rapido' ? 'rapido' : 'fotos'); } catch (e) {}
     try {
       const [rM, rP] = await Promise.all([
         fetch(`${BACKEND_URL}/api/revendedor/margenes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token }) }),
@@ -3753,10 +3975,24 @@ function CatalogoApp() {
                   Ingresar
                 </button>
               ) : levantarPara ? (
-                // En modo levantar pedido: botón visible para salir/cambiar de cliente
-                <button onClick={terminarLevantarPedido} className="bg-white/25 hover:bg-white/40 px-3 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-1">
-                  <X className="w-4 h-4" /> Salir
-                </button>
+                // En modo levantar pedido: alternar vista fotos/lista + salir
+                <div className="flex items-center gap-1">
+                  <div className="flex bg-white/15 rounded-lg p-0.5">
+                    <button onClick={() => setModoLevantarVista('fotos')}
+                      className="px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors"
+                      style={modoLevantarVista === 'fotos' ? { backgroundColor: 'white', color: COLORS.azul } : { color: 'white' }}>
+                      Fotos
+                    </button>
+                    <button onClick={() => setModoLevantarVista('rapido')}
+                      className="px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors"
+                      style={modoLevantarVista === 'rapido' ? { backgroundColor: 'white', color: COLORS.azul } : { color: 'white' }}>
+                      Lista
+                    </button>
+                  </div>
+                  <button onClick={terminarLevantarPedido} className="bg-white/25 hover:bg-white/40 px-3 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-1">
+                    <X className="w-4 h-4" /> Salir
+                  </button>
+                </div>
               ) : (
               <>
               {/* Carrito: queda afuera del menú, siempre visible */}
@@ -3775,6 +4011,7 @@ function CatalogoApp() {
             </div>
           </div>
 
+          {!(levantarPara && modoLevantarVista === 'rapido') && (
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -3785,8 +4022,10 @@ function CatalogoApp() {
               className="w-full pl-10 pr-4 py-2.5 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
+          )}
 
           {/* Barra de marcas + categorías con flechas de desplazamiento */}
+          {!(levantarPara && modoLevantarVista === 'rapido') && (
           <div className="flex items-center gap-1">
             {/* Botón Todas / Marcas con desplegable */}
             <div className="relative flex-shrink-0">
@@ -3861,6 +4100,7 @@ function CatalogoApp() {
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
+          )}
 
           {/* Menú desplegable de marcas (tapa parte del catálogo) */}
           {mostrarMenuMarcas && (
@@ -3972,6 +4212,15 @@ function CatalogoApp() {
         </div>
       )}
 
+      {levantarPara && modoLevantarVista === 'rapido' ? (
+        <MenuRapidoPedido
+          productos={productos}
+          items={itemsPedidoRev}
+          precioUnit={obtenerPrecioUnitario}
+          onFijar={(cod, cant) => { establecerCantidad(productos.find(p => p.codigo === cod) || { codigo: cod }, 'unidad', cant); }}
+          nombreCliente={levantarPara.nombre}
+        />
+      ) : (
       <main className="max-w-7xl mx-auto px-4 py-6">
         <div className="mb-4 text-sm text-gray-600 flex items-center gap-2 flex-wrap">
           <span>{productosFiltrados.length} {productosFiltrados.length === 1 ? 'producto' : 'productos'}</span>
@@ -4118,6 +4367,7 @@ function CatalogoApp() {
           </div>
         )}
       </main>
+      )}
 
       {/* Confirmación de pedido cargado en Flexxus */}
       {pedidoOk && (
@@ -4608,5 +4858,14 @@ export default function App() {
   try {
     esPanel = new URLSearchParams(window.location.search).get('panel') === 'adminsanrasdimaria';
   } catch (e) { esPanel = false; }
-  return esPanel ? <PanelAdmin /> : <CatalogoApp />;
+
+  // Aplicar el tema guardado al arrancar (y una sola vez).
+  useEffect(() => { aplicarTema(temaGuardado()); }, []);
+
+  return (
+    <>
+      <style>{CSS_MODO_OSCURO}</style>
+      {esPanel ? <PanelAdmin /> : <CatalogoApp />}
+    </>
+  );
 }
