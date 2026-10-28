@@ -1714,13 +1714,15 @@ function SeccionConsolidar({ usuario, productos, onEnviado }) {
           || (p.marca || '').toLowerCase().includes(t);
       }).slice(0, 15)
     : [];
+  // Tocar un producto lo agrega (cantidad 1) o lo quita si ya estaba.
+  // No cierra el buscador ni borra la búsqueda: así se eligen varios seguidos
+  // y después se ajustan las cantidades abajo.
   function agregarPropio(p) {
     setStockPropio(sp => {
       const existe = sp.find(x => x.codigoArticulo === p.codigo);
-      if (existe) return sp.map(x => x.codigoArticulo === p.codigo ? { ...x, cantidad: x.cantidad + 1 } : x);
+      if (existe) return sp.filter(x => x.codigoArticulo !== p.codigo);  // destildar
       return [...sp, { codigoArticulo: p.codigo, cantidad: 1 }];
     });
-    setBuscaProd(''); setMostrarBuscador(false);
   }
   function cambiarPropio(cod, cant) {
     const n = Math.max(0, parseInt(cant) || 0);
@@ -1838,18 +1840,37 @@ function SeccionConsolidar({ usuario, productos, onEnviado }) {
               </div>
               <p className="text-xs text-gray-400 mb-2">Mercadería extra para tu depósito (no va a ningún cliente).</p>
               {mostrarBuscador && (
-                <div className="relative mb-2">
-                  <input value={buscaProd} onChange={e => setBuscaProd(e.target.value)} placeholder="🔍 Buscar producto…"
-                    className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: VERDE_REV.claro }} autoFocus />
-                  {prodFiltrados.length > 0 && (
-                    <div className="absolute z-10 left-0 right-0 bg-white border rounded-lg mt-1 shadow-lg max-h-56 overflow-y-auto">
-                      {prodFiltrados.map(p => (
-                        <button key={p.codigo} onClick={() => agregarPropio(p)} className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b last:border-0">
-                          <span className="font-bold">{p.nombre || p.codigo}</span>
-                          <span className="text-gray-400 text-xs"> · {p.marca} · {fmt(costoDe(p))}</span>
-                        </button>
-                      ))}
+                <div className="mb-2">
+                  <div className="flex gap-2">
+                    <input value={buscaProd} onChange={e => setBuscaProd(e.target.value)} placeholder="🔍 Buscar producto…"
+                      className="flex-1 px-3 py-2 rounded-lg border text-sm" style={{ borderColor: VERDE_REV.claro }} autoFocus />
+                    <button onClick={() => { setMostrarBuscador(false); setBuscaProd(''); }}
+                      className="px-3 py-2 rounded-lg text-sm font-bold text-white" style={{ backgroundColor: VERDE_REV.principal }}>Listo</button>
+                  </div>
+                  {buscaProd.trim().length >= 2 && (
+                    <div className="border rounded-lg mt-1 max-h-56 overflow-y-auto bg-white">
+                      {prodFiltrados.length === 0 && <p className="text-xs text-gray-400 px-3 py-2">Sin resultados.</p>}
+                      {prodFiltrados.map(p => {
+                        const marcado = !!stockPropio.find(x => x.codigoArticulo === p.codigo);
+                        return (
+                          <button key={p.codigo} onClick={() => agregarPropio(p)}
+                            className="flex items-center gap-2 w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
+                            style={marcado ? { backgroundColor: VERDE_REV.fondo } : {}}>
+                            <span className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+                              style={marcado ? { backgroundColor: VERDE_REV.principal } : { border: '2px solid #d1d5db' }}>
+                              {marcado && <Check className="w-3.5 h-3.5 text-white" />}
+                            </span>
+                            <span className="flex-1 min-w-0 truncate">
+                              <span className="font-bold">{p.nombre || p.codigo}</span>
+                              <span className="text-gray-400 text-xs"> · {p.marca} · {fmt(costoDe(p))}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
+                  )}
+                  {stockPropio.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">{stockPropio.length} producto(s) agregado(s). Ajustá las cantidades abajo.</p>
                   )}
                 </div>
               )}
