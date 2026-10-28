@@ -9,6 +9,9 @@ const COLORS = {
   azulClaro: '#2d3a8a',
   gris: '#9ca3af',
   grisClaro: '#e5e7eb',
+  // Azul para TEXTO: usa una variable CSS que se aclara en modo oscuro
+  // (ver CSS_MODO_OSCURO). En claro vale el azul de marca; en oscuro, un azul claro legible.
+  azulTexto: 'var(--sr-azul-texto, #1e2a6e)',
 };
 
 // Paleta del MODO REVENDEDOR: verde esmeralda/teal. Distinto del azul San-Ras
@@ -74,6 +77,11 @@ function useTema() {
 //   borde          #2e3b52
 //   texto          #e6eaf2 / secundario #9aa7bd
 const CSS_MODO_OSCURO = `
+  /* Variable del azul de marca cuando se usa como TEXTO. En claro, el azul normal.
+     En oscuro, un azul claro legible. Todos los textos azules de la app la usan. */
+  :root { --sr-azul-texto: #1e2a6e; }
+  body.dark { --sr-azul-texto: #8ab4ff; }
+
   body.dark { background-color: #0b1220; color: #e6eaf2; }
 
   /* --- Superficies --- */
@@ -304,7 +312,7 @@ function BandaMarca({ marca }) {
       {hayLogo && (
         <img src={url} alt={marca} title={marca} style={{ height: 44, maxWidth: 160, objectFit: 'contain' }} onError={() => setFalla(true)} />
       )}
-      <span className="text-xl font-black uppercase tracking-tight" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>{marca}</span>
+      <span className="azul-marca text-xl font-black uppercase tracking-tight" style={{ color: COLORS.azulTexto, fontFamily: 'Impact, "Arial Black", sans-serif' }}>{marca}</span>
     </div>
   );
 }
@@ -324,7 +332,7 @@ function LogoRelleno({ marca, huecoDesktop }) {
       style={{ backgroundColor: '#f8fafc', gridColumn: `span ${span} / span ${span}` }}
     >
       {(!marca || !url || falla)
-        ? <span className="font-black uppercase text-center opacity-40" style={{ color: COLORS.azul, fontSize: span >= 3 ? 28 : 20 }}>{marca}</span>
+        ? <span className="azul-marca font-black uppercase text-center opacity-40" style={{ color: COLORS.azulTexto, fontSize: span >= 3 ? 28 : 20 }}>{marca}</span>
         : <img src={url} alt={marca} title={marca} style={{ maxHeight: maxH, maxWidth: '90%', objectFit: 'contain', opacity: 0.92 }} onError={() => setFalla(true)} />
       }
     </div>
@@ -346,7 +354,7 @@ function LogoMarca({ marca, descripcion, tamano = 'tarjeta', fallbackTexto = tru
     const cls = tamano === 'chico'
       ? 'text-sm text-gray-700'
       : 'text-xs font-bold uppercase tracking-wide';
-    const estilo = tamano === 'chico' ? {} : { color: COLORS.azul };
+    const estilo = tamano === 'chico' ? {} : { color: COLORS.azulTexto };
     return <span className={cls} style={estilo}>{marca}</span>;
   }
 
@@ -488,7 +496,7 @@ function ControlCantidad({ producto, modoActual, cantidadActual, onAgregar, onEs
             }
           }}
           className="flex-1 min-w-0 font-black text-center border-2 rounded-lg py-1.5 text-sm focus:outline-none"
-          style={{ color: COLORS.azul, borderColor: COLORS.azul }}
+          style={{ color: COLORS.azulTexto, borderColor: COLORS.azul }}
           placeholder="Cant."
         />
         <button
@@ -508,7 +516,7 @@ function ControlCantidad({ producto, modoActual, cantidadActual, onAgregar, onEs
     <div className="flex items-center gap-1">
       <div
         className="flex-1 min-w-0 font-black text-center py-1.5 text-sm rounded-lg flex items-center justify-center gap-1"
-        style={{ backgroundColor: COLORS.grisClaro, color: COLORS.azul }}
+        style={{ backgroundColor: COLORS.grisClaro, color: COLORS.azulTexto }}
       >
         <Check className="w-4 h-4" style={{ color: '#16a34a' }} />
         {cantidadActual} {modoActual === 'bulto' ? 'B' : 'U'}
@@ -782,7 +790,7 @@ function PantallaLogin({ onLogin }) {
             </button>
             <button onClick={() => onLogin({ tipo: 'preview', nombre: 'Previsualización', lista: 0 })}
               className="w-full py-4 rounded-xl border-2 font-bold flex items-center justify-center gap-2 transition-colors hover:bg-gray-50"
-              style={{ borderColor: COLORS.azul, color: COLORS.azul }}>
+              style={{ borderColor: COLORS.azul, color: COLORS.azulTexto }}>
               <ShoppingCart className="w-5 h-5" /> Previsualizar catálogo
             </button>
             <p className="text-xs text-center text-gray-500 mt-2">
@@ -791,9 +799,9 @@ function PantallaLogin({ onLogin }) {
 
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-xs text-gray-700 leading-relaxed">
-                <strong style={{ color: COLORS.azul }}>¿Tenés autoservicio, almacén, kiosco o sos revendedor?</strong><br/>
+                <strong style={{ color: COLORS.azulTexto }}>¿Tenés autoservicio, almacén, kiosco o sos revendedor?</strong><br/>
                 Si todavía no tenés número de cliente, comunicate al{' '}
-                <a href={`https://wa.me/${WHATSAPP_DISTRIBUIDORA}`} target="_blank" rel="noopener noreferrer" className="font-bold underline" style={{ color: COLORS.azul }}>
+                <a href={`https://wa.me/${WHATSAPP_DISTRIBUIDORA}`} target="_blank" rel="noopener noreferrer" className="font-bold underline" style={{ color: COLORS.azulTexto }}>
                   {TELEFONO_DISTRIBUIDORA_VISIBLE}
                 </a>{' '}para habilitarlo.
               </p>
@@ -829,7 +837,7 @@ function PantallaLogin({ onLogin }) {
             </button>
 
             <div className="flex justify-between text-sm">
-              <button onClick={() => { limpiar(); setModo('registro'); }} className="font-semibold hover:underline" style={{ color: COLORS.azul }}>
+              <button onClick={() => { limpiar(); setModo('registro'); }} className="font-semibold hover:underline" style={{ color: COLORS.azulTexto }}>
                 Registrarme
               </button>
               <button onClick={() => { limpiar(); setModo('recuperar'); }} className="text-gray-500 hover:underline">
@@ -1146,15 +1154,15 @@ function CalendarioRetiro({ feriados, seleccionado, onSeleccionar }) {
           disabled={!puedeAnterior}
           className={`p-1 rounded ${puedeAnterior ? 'hover:bg-gray-100' : 'opacity-30 cursor-not-allowed'}`}
         >
-          <ChevronLeft className="w-5 h-5" style={{ color: COLORS.azul }} />
+          <ChevronLeft className="w-5 h-5" style={{ color: COLORS.azulTexto }} />
         </button>
-        <span className="font-bold text-sm" style={{ color: COLORS.azul }}>{nombresMes[mes]} {anio}</span>
+        <span className="font-bold text-sm" style={{ color: COLORS.azulTexto }}>{nombresMes[mes]} {anio}</span>
         <button
           type="button"
           onClick={() => setMesVista(new Date(anio, mes + 1, 1))}
           className="p-1 rounded hover:bg-gray-100"
         >
-          <ChevronRight className="w-5 h-5" style={{ color: COLORS.azul }} />
+          <ChevronRight className="w-5 h-5" style={{ color: COLORS.azulTexto }} />
         </button>
       </div>
 
@@ -1457,7 +1465,7 @@ function SeccionMargenes({ usuario, productos }) {
 
       {/* SECCIÓN 1 — GLOBAL */}
       <div className="border rounded-lg p-3">
-        <h3 className="font-black mb-2" style={{ color: COLORS.azul }}>Para todos los clientes</h3>
+        <h3 className="font-black mb-2" style={{ color: COLORS.azulTexto }}>Para todos los clientes</h3>
 
         <div className="mb-4">
           <p className="text-sm font-bold text-gray-700 mb-1">Margen general (todos los productos)</p>
@@ -1492,7 +1500,7 @@ function SeccionMargenes({ usuario, productos }) {
 
       {/* SECCIÓN 2 — POR CLIENTE */}
       <div className="border rounded-lg p-3">
-        <h3 className="font-black mb-2" style={{ color: COLORS.azul }}>Para un cliente puntual</h3>
+        <h3 className="font-black mb-2" style={{ color: COLORS.azulTexto }}>Para un cliente puntual</h3>
         <input value={buscaCliente} onChange={e=>setBuscaCliente(e.target.value)} placeholder="🔍 Buscar cliente de tu cartera…" className={inputCls} />
         {!clienteSel && (
           <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
@@ -2190,6 +2198,91 @@ function SeccionMisConsolidados({ usuario, productos }) {
   const nombreProd = (cod) => { const p = (productos||[]).find(x => x.codigo === cod); return p ? (p.nombre || p.descripcionOriginal || cod) : cod; };
   const fechaCorta = (f) => { if (!f) return ''; const s = String(f).split(' ')[0]; const [a,m,d] = s.split('-'); return d && m && a ? `${d}/${m}/${a}` : s; };
 
+  const escapar = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // Trae el detalle (si no está) y abre una ventana de impresión con un remito
+  // por cliente + una hoja de sobrante. El usuario imprime o guarda como PDF.
+  async function imprimirRemitos(cab) {
+    let det = detalle[cab.id];
+    if (!det) {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/revendedor/consolidados/detalle`, {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: usuario.token, idConsolidado: cab.id })
+        });
+        const data = await r.json();
+        if (data.ok) { det = data.detalle; setDetalle(d => ({ ...d, [cab.id]: det })); }
+      } catch (e) {}
+    }
+    if (!det) { alert('No se pudo cargar el detalle del consolidado.'); return; }
+
+    const fecha = fechaCorta(cab.fechaDia);
+    const revendedor = usuario ? usuario.nombre : '';
+    const sobrante = (det.articulos || []).filter(a => a.sobrante > 0);
+
+    // Un remito por cliente
+    const remitos = (det.clientes || []).map(cl => {
+      const filas = (cl.detalle || []).map(d =>
+        `<tr><td>${escapar(nombreProd(d.codigoArticulo))}</td><td style="text-align:right">${d.cantidad}</td></tr>`
+      ).join('');
+      const totalU = (cl.detalle || []).reduce((s,d)=>s+d.cantidad,0);
+      return `
+        <section class="remito">
+          <div class="head">
+            <div class="rev">${escapar(revendedor)}</div>
+            <div class="fecha">Fecha: ${escapar(fecha)}</div>
+          </div>
+          <h2>Remito · ${escapar(cl.nombre)}</h2>
+          <div class="dir">${escapar(cl.direccion || '')}${cl.localidad ? ' · ' + escapar(cl.localidad) : ''}</div>
+          <table>
+            <thead><tr><th>Producto</th><th style="text-align:right">Cant.</th></tr></thead>
+            <tbody>${filas || '<tr><td colspan="2">Sin ítems</td></tr>'}</tbody>
+            <tfoot><tr><td>Total unidades</td><td style="text-align:right">${totalU}</td></tr></tfoot>
+          </table>
+          <div class="firma">Recibí conforme: ____________________</div>
+        </section>`;
+    }).join('');
+
+    // Hoja de sobrante (si hay)
+    const hojaSobrante = sobrante.length > 0 ? `
+      <section class="remito">
+        <div class="head">
+          <div class="rev">${escapar(revendedor)}</div>
+          <div class="fecha">Fecha: ${escapar(fecha)}</div>
+        </div>
+        <h2>Sobrante en depósito</h2>
+        <div class="dir">Mercadería que queda para vos después de repartir a tus clientes.</div>
+        <table>
+          <thead><tr><th>Producto</th><th style="text-align:right">Cant.</th></tr></thead>
+          <tbody>${sobrante.map(a => `<tr><td>${escapar(nombreProd(a.codigoArticulo))}</td><td style="text-align:right">${a.sobrante}</td></tr>`).join('')}</tbody>
+        </table>
+      </section>` : '';
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Remitos ${escapar(fecha)}</title>
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; padding: 0; }
+        .remito { padding: 28px 32px; page-break-after: always; }
+        .remito:last-child { page-break-after: auto; }
+        .head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #1e2a6e; padding-bottom: 6px; margin-bottom: 14px; }
+        .rev { font-weight: 800; font-size: 18px; color: #1e2a6e; text-transform: uppercase; }
+        .fecha { font-size: 13px; color: #444; }
+        h2 { font-size: 20px; margin: 6px 0; }
+        .dir { font-size: 13px; color: #555; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 7px 4px; text-align: left; }
+        thead th { border-bottom: 2px solid #333; }
+        tfoot td { font-weight: 800; border-top: 2px solid #333; border-bottom: none; }
+        .firma { margin-top: 36px; font-size: 13px; color: #333; }
+        @media print { .remito { padding: 14mm; } }
+      </style></head><body>${remitos}${hojaSobrante}
+      <script>window.onload=function(){setTimeout(function(){window.print();},200);};<\/script>
+      </body></html>`;
+
+    const w = window.open('', '_blank');
+    if (!w) { alert('El navegador bloqueó la ventana de impresión. Permití las ventanas emergentes e intentá de nuevo.'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
   if (cargando) return <div className="p-8 text-center text-gray-500">Cargando…</div>;
 
   return (
@@ -2238,6 +2331,12 @@ function SeccionMisConsolidados({ usuario, productos }) {
                             ))}
                           </>
                         )}
+                        <button onClick={() => imprimirRemitos(c)}
+                          className="mt-3 w-full py-2 rounded-lg font-bold text-white flex items-center justify-center gap-2"
+                          style={{ backgroundColor: VERDE_REV.principal }}>
+                          <Download className="w-4 h-4" /> Imprimir remitos (PDF)
+                        </button>
+                        <p className="text-[11px] text-gray-400 mt-1 text-center">Un remito por cliente + hoja de sobrante. Elegí "Guardar como PDF" en el diálogo de impresión.</p>
                       </>
                     ) : <p className="text-xs text-gray-400 py-2">No se pudo cargar el detalle.</p>}
                   </div>
@@ -2952,7 +3051,7 @@ function PanelAdmin() {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: COLORS.azul }}>
         <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-          <h1 className="text-2xl font-black mb-1" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>PANEL SAN-RAS</h1>
+          <h1 className="text-2xl font-black mb-1" style={{ color: COLORS.azulTexto, fontFamily: 'Impact, "Arial Black", sans-serif' }}>PANEL SAN-RAS</h1>
           <p className="text-gray-500 text-sm mb-4">Ingresá la clave de administración.</p>
           {errorClave && <div className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded">{errorClave}</div>}
           <input type="password" value={clave} onChange={e => setClave(e.target.value)}
@@ -2972,13 +3071,13 @@ function PanelAdmin() {
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-2 mb-4">
-          <Settings className="w-6 h-6" style={{ color: COLORS.azul }} />
-          <h1 className="text-2xl font-black" style={{ color: COLORS.azul, fontFamily: 'Impact, "Arial Black", sans-serif' }}>ADMINISTRACIÓN</h1>
+          <Settings className="w-6 h-6" style={{ color: COLORS.azulTexto }} />
+          <h1 className="text-2xl font-black" style={{ color: COLORS.azulTexto, fontFamily: 'Impact, "Arial Black", sans-serif' }}>ADMINISTRACIÓN</h1>
         </div>
 
         {/* Envío por cliente */}
         <div className="bg-white rounded-xl shadow p-4 mb-4">
-          <h2 className="font-bold mb-1" style={{ color: COLORS.azul }}>Envío por cliente</h2>
+          <h2 className="font-bold mb-1" style={{ color: COLORS.azulTexto }}>Envío por cliente</h2>
           <p className="text-xs text-gray-500 mb-3">Habilitá o bloqueá el envío de un cliente puntual, más allá de su lista.</p>
           <div className="flex gap-2">
             <input type="text" value={codigoBusca} onChange={e => setCodigoBusca(e.target.value)}
@@ -3022,7 +3121,7 @@ function PanelAdmin() {
 
         {/* Excepciones cargadas */}
         <div className="bg-white rounded-xl shadow p-4">
-          <h2 className="font-bold mb-3" style={{ color: COLORS.azul }}>Excepciones cargadas ({excepciones.length})</h2>
+          <h2 className="font-bold mb-3" style={{ color: COLORS.azulTexto }}>Excepciones cargadas ({excepciones.length})</h2>
           {excepciones.length === 0 ? (
             <p className="text-sm text-gray-400">Todavía no hay excepciones. Todo funciona por la regla de lista.</p>
           ) : (
@@ -3043,7 +3142,7 @@ function PanelAdmin() {
 
         {/* Límite de consolidados del revendedor (R4) */}
         <div className="bg-white rounded-xl shadow p-4 mt-4">
-          <h2 className="font-bold mb-1" style={{ color: COLORS.azul }}>Límite de consolidados por día (revendedores)</h2>
+          <h2 className="font-bold mb-1" style={{ color: COLORS.azulTexto }}>Límite de consolidados por día (revendedores)</h2>
           <p className="text-xs text-gray-500 mb-3">Cuántos consolidados puede mandar un revendedor por día. El límite general vale para todos; podés ponerle una excepción a uno puntual.</p>
 
           {msgLimite && <div className="mb-3 text-sm text-gray-700 bg-gray-100 p-2 rounded">{msgLimite}</div>}
@@ -3144,7 +3243,7 @@ function Ajustes({ usuario, onCerrar }) {
         </div>
         <div className="p-4 space-y-3">
           {/* Apariencia: modo claro/oscuro */}
-          <p className="text-sm font-bold flex items-center gap-2" style={{ color: COLORS.azul }}>
+          <p className="text-sm font-bold flex items-center gap-2" style={{ color: COLORS.azulTexto }}>
             <Settings className="w-4 h-4" /> Apariencia
           </p>
           <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3 border">
@@ -3183,7 +3282,7 @@ function Ajustes({ usuario, onCerrar }) {
 
           <div className="border-t pt-3" />
 
-          <p className="text-sm font-bold flex items-center gap-2" style={{ color: COLORS.azul }}>
+          <p className="text-sm font-bold flex items-center gap-2" style={{ color: COLORS.azulTexto }}>
             <KeyRound className="w-4 h-4" /> Cambiar contraseña
           </p>
           {ok && <div className="text-sm text-green-700 bg-green-50 p-2 rounded">Contraseña cambiada correctamente.</div>}
@@ -4029,12 +4128,12 @@ function CatalogoApp() {
                   <div className="flex bg-white/15 rounded-lg p-0.5">
                     <button onClick={() => setModoLevantarVista('fotos')}
                       className="px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors"
-                      style={modoLevantarVista === 'fotos' ? { backgroundColor: 'white', color: COLORS.azul } : { color: 'white' }}>
+                      style={modoLevantarVista === 'fotos' ? { backgroundColor: 'white', color: COLORS.azulTexto } : { color: 'white' }}>
                       Fotos
                     </button>
                     <button onClick={() => setModoLevantarVista('rapido')}
                       className="px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors"
-                      style={modoLevantarVista === 'rapido' ? { backgroundColor: 'white', color: COLORS.azul } : { color: 'white' }}>
+                      style={modoLevantarVista === 'rapido' ? { backgroundColor: 'white', color: COLORS.azulTexto } : { color: 'white' }}>
                       Lista
                     </button>
                   </div>
@@ -4049,12 +4148,12 @@ function CatalogoApp() {
                 <div className="flex bg-white/15 rounded-lg p-0.5 mr-1">
                   <button onClick={() => setModoCatalogoRev('fotos')}
                     className="px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors"
-                    style={modoCatalogoRev === 'fotos' ? { backgroundColor: 'white', color: COLORS.azul } : { color: 'white' }}>
+                    style={modoCatalogoRev === 'fotos' ? { backgroundColor: 'white', color: COLORS.azulTexto } : { color: 'white' }}>
                     Fotos
                   </button>
                   <button onClick={() => setModoCatalogoRev('rapido')}
                     className="px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors"
-                    style={modoCatalogoRev === 'rapido' ? { backgroundColor: 'white', color: COLORS.azul } : { color: 'white' }}>
+                    style={modoCatalogoRev === 'rapido' ? { backgroundColor: 'white', color: COLORS.azulTexto } : { color: 'white' }}>
                     Lista
                   </button>
                 </div>
@@ -4098,7 +4197,7 @@ function CatalogoApp() {
                 className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors flex items-center gap-1 ${
                   marcasSeleccionadas.length > 0 ? 'bg-white' : (categoriaActiva === 'Todas' ? 'bg-white' : 'bg-white/20 text-white hover:bg-white/30')
                 }`}
-                style={(marcasSeleccionadas.length > 0 || categoriaActiva === 'Todas') ? { color: COLORS.azul } : {}}
+                style={(marcasSeleccionadas.length > 0 || categoriaActiva === 'Todas') ? { color: COLORS.azulTexto } : {}}
               >
                 {marcasSeleccionadas.length === 0 
                   ? 'Marcas' 
@@ -4134,7 +4233,7 @@ function CatalogoApp() {
                 className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
                   categoriaActiva === 'Todas' ? 'bg-white' : 'bg-white/20 text-white hover:bg-white/30'
                 }`}
-                style={categoriaActiva === 'Todas' ? { color: COLORS.azul } : {}}
+                style={categoriaActiva === 'Todas' ? { color: COLORS.azulTexto } : {}}
               >
                 Todas
               </button>
@@ -4145,7 +4244,7 @@ function CatalogoApp() {
                   className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
                     categoriaActiva === cat ? 'bg-white' : 'bg-white/20 text-white hover:bg-white/30'
                   }`}
-                  style={categoriaActiva === cat ? { color: COLORS.azul } : {}}
+                  style={categoriaActiva === cat ? { color: COLORS.azulTexto } : {}}
                 >
                   {cat}
                 </button>
@@ -4190,7 +4289,7 @@ function CatalogoApp() {
                       <button
                         onClick={() => setMarcasSeleccionadas([])}
                         className="text-xs font-bold hover:underline"
-                        style={{ color: COLORS.azul }}
+                        style={{ color: COLORS.azulTexto }}
                       >
                         Limpiar selección
                       </button>
@@ -4374,12 +4473,12 @@ function CatalogoApp() {
                             )}
 
                             {producto.sinPrecio ? (
-                              <div className="text-xs mb-2 leading-snug p-2 rounded-lg bg-blue-50 border border-blue-100" style={{ color: COLORS.azul }}>
+                              <div className="text-xs mb-2 leading-snug p-2 rounded-lg bg-blue-50 border border-blue-100" style={{ color: COLORS.azulTexto }}>
                                 Date de alta como cliente en San-Ras para acceder a la lista de precios
                               </div>
                             ) : (
                               <>
-                                <div className="precio-marca text-lg font-black mb-1" style={{ color: COLORS.azul }}>
+                                <div className="precio-marca text-lg font-black mb-1" style={{ color: COLORS.azulTexto }}>
                                   {formatearPrecio(precioUnit)}
                                   {producto.soloBulto && (
                                     <span className="text-xs text-gray-500 font-normal"> / bulto</span>
@@ -4396,7 +4495,7 @@ function CatalogoApp() {
                                       <>
                                         {producto.soloBulto ? (
                                           <>
-                                            <div className="font-semibold" style={{ color: COLORS.azul }}>
+                                            <div className="font-semibold" style={{ color: COLORS.azulTexto }}>
                                               {emp.mensajePrincipal}
                                             </div>
                                             {emp.mensajeReferencia && (
@@ -4449,7 +4548,7 @@ function CatalogoApp() {
             <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#dcfce7' }}>
               <Check className="w-9 h-9" style={{ color: '#16a34a' }} />
             </div>
-            <h3 className="text-xl font-black mb-1" style={{ color: COLORS.azul }}>¡Pedido enviado!</h3>
+            <h3 className="text-xl font-black mb-1" style={{ color: COLORS.azulTexto }}>¡Pedido enviado!</h3>
             <p className="text-gray-600 text-sm mb-4">
               Tu pedido entró correctamente. Lo vamos a revisar y preparar.
             </p>
@@ -4484,12 +4583,12 @@ function CatalogoApp() {
             <div className="flex-1 overflow-y-auto p-2">
               <button onClick={() => { setMostrarMenu(false); abrirMisPedidos(); }}
                 className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left">
-                <Package className="w-5 h-5" style={{ color: COLORS.azul }} /> <span className="font-semibold text-gray-800">Mis pedidos</span>
+                <Package className="w-5 h-5" style={{ color: COLORS.azulTexto }} /> <span className="font-semibold text-gray-800">Mis pedidos</span>
               </button>
               {puedeElegirEnvio && (
                 <button onClick={() => { setMostrarMenu(false); setMostrarDirecciones(true); }}
                   className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left">
-                  <Home className="w-5 h-5" style={{ color: COLORS.azul }} /> <span className="font-semibold text-gray-800">Mis direcciones</span>
+                  <Home className="w-5 h-5" style={{ color: COLORS.azulTexto }} /> <span className="font-semibold text-gray-800">Mis direcciones</span>
                 </button>
               )}
               {usuario.lista === 5 && (
@@ -4501,7 +4600,7 @@ function CatalogoApp() {
               )}
               <button onClick={() => { setMostrarMenu(false); setMostrarAjustes(true); }}
                 className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 text-left">
-                <Settings className="w-5 h-5" style={{ color: COLORS.azul }} /> <span className="font-semibold text-gray-800">Ajustes</span>
+                <Settings className="w-5 h-5" style={{ color: COLORS.azulTexto }} /> <span className="font-semibold text-gray-800">Ajustes</span>
               </button>
             </div>
             <div className="p-2 border-t">
@@ -4558,13 +4657,13 @@ function CatalogoApp() {
                           className="w-full flex items-center justify-between p-3 hover:bg-gray-50 text-left"
                         >
                           <div>
-                            <div className="font-bold text-sm" style={{ color: COLORS.azul }}>Pedido N° {p.numero}</div>
+                            <div className="font-bold text-sm" style={{ color: COLORS.azulTexto }}>Pedido N° {p.numero}</div>
                             <div className="text-xs text-gray-500">{fechaCorta} · {p.totalItems} {p.totalItems === 1 ? 'artículo' : 'artículos'}
                               {p.entrega === 'retiro' && p.diaRetiro ? ` · Retira ${p.diaRetiro}` : (p.entrega === 'envio' ? ' · Envío' : '')}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="font-black text-sm" style={{ color: COLORS.azul }}>{formatearPrecio(p.total)}</span>
+                            <span className="font-black text-sm" style={{ color: COLORS.azulTexto }}>{formatearPrecio(p.total)}</span>
                             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${abierto ? 'rotate-180' : ''}`} />
                           </div>
                         </button>
@@ -4577,7 +4676,7 @@ function CatalogoApp() {
                                   <span className="text-gray-800">{it.descripcion || it.articulo}</span>
                                   <span className="text-gray-400"> ({it.cantidad} × {formatearPrecio(it.precio)})</span>
                                 </div>
-                                <span className="font-semibold whitespace-nowrap" style={{ color: COLORS.azul }}>
+                                <span className="font-semibold whitespace-nowrap" style={{ color: COLORS.azulTexto }}>
                                   {formatearPrecio(it.precio * it.cantidad)}
                                 </span>
                               </div>
@@ -4683,7 +4782,7 @@ function CatalogoApp() {
                           <button onClick={()=>fijarCantidadRev(codigo, cant+1)} className="w-7 h-7 text-white rounded flex items-center justify-center" style={{ backgroundColor: COLORS.azul }}><Plus className="w-3 h-3" /></button>
                         </div>
                         <div className="text-right w-20">
-                          <div className="font-black text-sm" style={{ color: COLORS.azul }}>{formatearPrecio(pv*cant)}</div>
+                          <div className="font-black text-sm" style={{ color: COLORS.azulTexto }}>{formatearPrecio(pv*cant)}</div>
                           <button onClick={()=>fijarCantidadRev(codigo, 0)} className="text-red-500"><Trash2 className="w-4 h-4 inline" /></button>
                         </div>
                       </div>
@@ -4699,7 +4798,7 @@ function CatalogoApp() {
                 <div className="border-t p-4">
                   <div className="flex justify-between font-black text-lg mb-2">
                     <span>Total ({u} u)</span>
-                    <span style={{ color: COLORS.azul }}>{formatearPrecio(v)}</span>
+                    <span style={{ color: COLORS.azulTexto }}>{formatearPrecio(v)}</span>
                   </div>
                   <button onClick={()=>setMostrarPedidoRev(false)} className="w-full py-3 rounded-lg font-bold text-white" style={{ backgroundColor: COLORS.azul }}>
                     Seguir cargando
@@ -4754,7 +4853,7 @@ function CatalogoApp() {
                               </button>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="font-black text-sm" style={{ color: COLORS.azul }}>
+                              <span className="font-black text-sm" style={{ color: COLORS.azulTexto }}>
                                 {formatearPrecio(precio * item.cantidad)}
                               </span>
                               <button onClick={() => eliminarDelCarrito(clave)} className="text-red-500 hover:text-red-700">
@@ -4772,7 +4871,7 @@ function CatalogoApp() {
                     {/* Selector de modalidad de entrega (solo si el cliente puede elegir) */}
                     {puedeElegirEnvio && (
                       <div>
-                        <p className="text-sm font-bold mb-2" style={{ color: COLORS.azul }}>
+                        <p className="text-sm font-bold mb-2" style={{ color: COLORS.azulTexto }}>
                           ¿Cómo querés recibirlo? {!modalidadEntrega && <span className="text-red-500 font-normal">(elegí una opción)</span>}
                         </p>
                         <div className="grid grid-cols-2 gap-2">
@@ -4781,7 +4880,7 @@ function CatalogoApp() {
                             className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${modalidadEntrega === 'retiro' ? 'text-white' : 'bg-white'}`}
                             style={modalidadEntrega === 'retiro' 
                               ? { backgroundColor: COLORS.azul, borderColor: COLORS.azul }
-                              : { borderColor: COLORS.azul, color: COLORS.azul }}
+                              : { borderColor: COLORS.azul, color: COLORS.azulTexto }}
                           >
                             <Home className="w-4 h-4 inline mr-1" />
                             Retiro en local
@@ -4792,7 +4891,7 @@ function CatalogoApp() {
                             className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${modalidadEntrega === 'envio' ? 'text-white' : 'bg-white'}`}
                             style={modalidadEntrega === 'envio' 
                               ? { backgroundColor: COLORS.azul, borderColor: COLORS.azul }
-                              : { borderColor: COLORS.azul, color: COLORS.azul }}
+                              : { borderColor: COLORS.azul, color: COLORS.azulTexto }}
                           >
                             <Truck className="w-4 h-4 inline mr-1" />
                             Envío a domicilio
@@ -4811,7 +4910,7 @@ function CatalogoApp() {
                     {/* Selección de dirección de envío (cuando eligió envío) */}
                     {puedeElegirEnvio && modalidadEntrega === 'envio' && (
                       <div>
-                        <p className="text-sm font-bold mb-2" style={{ color: COLORS.azul }}>¿A qué dirección lo enviamos?</p>
+                        <p className="text-sm font-bold mb-2" style={{ color: COLORS.azulTexto }}>¿A qué dirección lo enviamos?</p>
                         {cargandoDirecciones ? (
                           <div className="text-sm text-gray-500 py-2">Cargando tus direcciones…</div>
                         ) : direccionesEnvio.length === 0 ? (
@@ -4830,13 +4929,13 @@ function CatalogoApp() {
                                 <div className="flex items-center gap-2">
                                   {d.etiqueta && <span className="font-bold text-sm text-gray-900">{d.etiqueta}</span>}
                                   {d.favorita && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Predeterminada</span>}
-                                  {direccionElegida === d.id && <Check className="w-4 h-4 ml-auto" style={{ color: COLORS.azul }} />}
+                                  {direccionElegida === d.id && <Check className="w-4 h-4 ml-auto" style={{ color: COLORS.azulTexto }} />}
                                 </div>
                                 <div className="text-sm text-gray-700">{d.direccion}</div>
                                 <div className="text-xs text-gray-500">{d.ciudad}</div>
                               </button>
                             ))}
-                            <button onClick={() => setMostrarDirecciones(true)} className="text-sm font-bold" style={{ color: COLORS.azul }}>
+                            <button onClick={() => setMostrarDirecciones(true)} className="text-sm font-bold" style={{ color: COLORS.azulTexto }}>
                               + Agregar o editar direcciones
                             </button>
                           </div>
@@ -4847,7 +4946,7 @@ function CatalogoApp() {
                     {/* Calendario de retiro (cuando la entrega es retiro) */}
                     {(!puedeElegirEnvio || modalidadEntrega === 'retiro') && (
                       <div>
-                        <p className="text-sm font-bold mb-1" style={{ color: COLORS.azul }}>
+                        <p className="text-sm font-bold mb-1" style={{ color: COLORS.azulTexto }}>
                           <Home className="w-4 h-4 inline mr-1" />¿Qué día retirás?
                         </p>
                         <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
@@ -4869,7 +4968,7 @@ function CatalogoApp() {
 
                     {/* Observaciones del pedido */}
                     <div>
-                      <p className="text-sm font-bold mb-1" style={{ color: COLORS.azul }}>Observaciones (opcional)</p>
+                      <p className="text-sm font-bold mb-1" style={{ color: COLORS.azulTexto }}>Observaciones (opcional)</p>
                       <textarea
                         value={observacionesPedido}
                         onChange={(e) => setObservacionesPedido(e.target.value)}
@@ -4891,7 +4990,7 @@ function CatalogoApp() {
                     )}
                     <div className="flex items-center justify-between text-lg font-black pt-2 border-t">
                       <span>TOTAL:</span>
-                      <span style={{ color: COLORS.azul }}>{formatearPrecio(totalCarrito)}</span>
+                      <span style={{ color: COLORS.azulTexto }}>{formatearPrecio(totalCarrito)}</span>
                     </div>
 
                     {pedidoError && (
